@@ -5,6 +5,7 @@ import { Command } from 'commander';
 
 import { registerAbortCommand } from './commands/abort.js';
 import { registerFixCommand } from './commands/fix.js';
+import { registerInitCommand } from './commands/init.js';
 import { registerLogsCommand } from './commands/logs.js';
 import { registerReviewCommand } from './commands/review.js';
 import { registerStartCommand } from './commands/start.js';
@@ -29,6 +30,7 @@ program.hook('preAction', (_thisCommand, actionCommand) => {
   logger.setVerbose(Boolean(globalOpts.verbose));
 });
 
+registerInitCommand(program);
 registerStartCommand(program);
 registerReviewCommand(program);
 registerFixCommand(program);
