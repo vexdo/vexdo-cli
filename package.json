@@ -1,0 +1,31 @@
+{
+  "name": "vexdo",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "vexdo": "./bin/vexdo.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "ora": "^8.1.1",
+    "picocolors": "^1.1.1",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@typescript-eslint/eslint-plugin": "^8.25.0",
+    "@typescript-eslint/parser": "^8.25.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.1.1",
+    "prettier": "^3.5.2",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}
