@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 import * as codex from './codex.js';
-import { ClaudeClient } from './claude.js';
+import type { ClaudeClient } from './claude.js';
 import * as git from './git.js';
 import * as logger from './logger.js';
 import * as state from './state.js';

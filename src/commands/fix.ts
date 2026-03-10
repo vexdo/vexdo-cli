@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
 import { ClaudeClient } from '../lib/claude.js';
 import * as codex from '../lib/codex.js';
@@ -11,7 +11,7 @@ import { runReviewLoop } from '../lib/review-loop.js';
 import { loadState, saveState } from '../lib/state.js';
 import { ensureTaskDirectory, loadAndValidateTask, moveTaskFileAtomically } from '../lib/tasks.js';
 
-type FixOptions = { dryRun?: boolean; verbose?: boolean };
+interface FixOptions { dryRun?: boolean; verbose?: boolean }
 
 function fatalAndExit(message: string): never {
   logger.fatal(message);
@@ -100,7 +100,7 @@ export function registerFixCommand(program: Command): void {
     .description('Provide feedback to codex and rerun review')
     .argument('<feedback>')
     .action(async (feedback: string, options: FixOptions, command: Command) => {
-      const merged = command.optsWithGlobals() as FixOptions;
+      const merged = command.optsWithGlobals();
       await runFix(feedback, { ...options, ...merged });
     });
 }

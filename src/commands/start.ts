@@ -1,7 +1,6 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
 import { ClaudeClient } from '../lib/claude.js';
 import * as codex from '../lib/codex.js';
@@ -14,11 +13,11 @@ import { createState, hasActiveTask, loadState, saveState } from '../lib/state.j
 import { submitActiveTask } from '../lib/submit-task.js';
 import { buildInitialStepState, ensureTaskDirectory, loadAndValidateTask, moveTaskFileAtomically } from '../lib/tasks.js';
 
-export type StartCommandOptions = {
+export interface StartCommandOptions {
   dryRun?: boolean;
   verbose?: boolean;
   resume?: boolean;
-};
+}
 
 function fatalAndExit(message: string, hint?: string): never {
   logger.fatal(message, hint);
@@ -81,7 +80,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
       if (step.depends_on && step.depends_on.length > 0) {
         for (const depService of step.depends_on) {
           const depState = state.steps.find((item) => item.service === depService);
-          if (!depState || depState.status !== 'done') {
+          if (depState?.status !== 'done') {
             fatalAndExit(`Step dependency '${depService}' for service '${step.service}' is not done.`);
           }
         }
@@ -191,7 +190,7 @@ export function registerStartCommand(program: Command): void {
     .argument('<task-file>')
     .option('--resume', 'Resume an existing active task')
     .action(async (taskFile: string, options: StartCommandOptions, command: Command) => {
-      const merged = command.optsWithGlobals() as StartCommandOptions;
+      const merged = command.optsWithGlobals();
       await runStart(taskFile, { ...options, ...merged });
     });
 }

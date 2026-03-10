@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
 import { findProjectRoot, loadConfig } from '../lib/config.js';
 import * as logger from '../lib/logger.js';

@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
 import { findProjectRoot } from '../lib/config.js';
 import * as logger from '../lib/logger.js';
 import { getLogsDir, getStateDir, loadState } from '../lib/state.js';
 
-type LogsOptions = { full?: boolean };
+interface LogsOptions { full?: boolean }
 
 function fatalAndExit(message: string): never {
   logger.fatal(message);

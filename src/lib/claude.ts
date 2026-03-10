@@ -137,7 +137,7 @@ function extractJson(text: string): string {
     return trimmed;
   }
 
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
   if (fenced && fenced[1]) {
     return fenced[1].trim();
   }
@@ -193,11 +193,7 @@ function isReviewComment(value: unknown): value is ReviewComment {
   if (candidate.line !== undefined && typeof candidate.line !== 'number') {
     return false;
   }
-  if (candidate.suggestion !== undefined && typeof candidate.suggestion !== 'string') {
-    return false;
-  }
-
-  return true;
+  return !(candidate.suggestion !== undefined && typeof candidate.suggestion !== 'string');
 }
 
 function isReviewResult(value: unknown): value is ReviewResult {

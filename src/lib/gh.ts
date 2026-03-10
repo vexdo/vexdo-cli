@@ -1,13 +1,13 @@
-import { execFile as execFileCb } from 'node:child_process';
+import {execFile as execFileCb} from 'node:child_process';
 
 const GH_TIMEOUT_MS = 30_000;
 
-export type CreatePrOptions = {
+export interface CreatePrOptions {
   title: string;
   body: string;
   base?: string;
   cwd: string;
-};
+}
 
 export class GhNotFoundError extends Error {
   constructor() {
@@ -36,11 +36,11 @@ export async function checkGhAvailable(): Promise<void> {
  */
 export async function createPr(opts: CreatePrOptions): Promise<string> {
   const base = opts.base ?? 'main';
-  const output = await new Promise<string>((resolve, reject) => {
+  return await new Promise<string>((resolve, reject) => {
     execFileCb(
       'gh',
       ['pr', 'create', '--title', opts.title, '--body', opts.body, '--base', base],
-      { cwd: opts.cwd, timeout: GH_TIMEOUT_MS, encoding: 'utf8' },
+      {cwd: opts.cwd, timeout: GH_TIMEOUT_MS, encoding: 'utf8'},
       (error, stdout, stderr) => {
         if (error) {
           reject(new Error((stderr || error.message).trim()));
@@ -50,19 +50,17 @@ export async function createPr(opts: CreatePrOptions): Promise<string> {
       },
     );
   });
-
-  return output;
 }
 
 /**
  * Return an existing PR URL for a branch, or null when no PR exists.
  */
 export async function getPrUrl(branch: string, cwd: string): Promise<string | null> {
-  const output = await new Promise<string | null>((resolve) => {
+  return await new Promise<string | null>((resolve) => {
     execFileCb(
       'gh',
       ['pr', 'view', branch, '--json', 'url', '--jq', '.url'],
-      { cwd, timeout: GH_TIMEOUT_MS, encoding: 'utf8' },
+      {cwd, timeout: GH_TIMEOUT_MS, encoding: 'utf8'},
       (error, stdout) => {
         if (error) {
           resolve(null);
@@ -73,6 +71,4 @@ export async function getPrUrl(branch: string, cwd: string): Promise<string | nu
       },
     );
   });
-
-  return output;
 }

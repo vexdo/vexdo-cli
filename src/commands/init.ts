@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
-import { Command } from 'commander';
+import type { Command } from 'commander';
 import { stringify } from 'yaml';
 
 import * as logger from '../lib/logger.js';

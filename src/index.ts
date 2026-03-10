@@ -26,7 +26,7 @@ program
   .option('--dry-run', 'Print plan without making changes');
 
 program.hook('preAction', (_thisCommand, actionCommand) => {
-  const globalOpts = actionCommand.optsWithGlobals() as { verbose?: boolean };
+  const globalOpts = actionCommand.optsWithGlobals();
   logger.setVerbose(Boolean(globalOpts.verbose));
 });
 

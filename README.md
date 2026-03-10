@@ -2,7 +2,7 @@
 
 Automated implementation + review loop for multi-service tasks, powered by Codex and Claude.
 
-![CI](https://github.com/your-org/vexdo/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/vexdo/vexdo-cli/actions/workflows/ci.yml/badge.svg)
 ![npm](https://img.shields.io/npm/v/vexdo)
 ![license](https://img.shields.io/npm/l/vexdo)
 ![node](https://img.shields.io/node/v/vexdo)
@@ -45,7 +45,7 @@ PR or escalate
 ## 4) Quick start (5 minutes)
 
 ```bash
-npm install -g vexdo
+npm install -g @vexdo/cli@0.1.0
 cd my-project
 vexdo init
 # create tasks/backlog/my-task.yml

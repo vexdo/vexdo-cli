@@ -2,14 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
 import { findProjectRoot } from '../lib/config.js';
 import * as logger from '../lib/logger.js';
 import { clearState, loadState } from '../lib/state.js';
 import { ensureTaskDirectory, moveTaskFileAtomically } from '../lib/tasks.js';
 
-export type AbortOptions = { force?: boolean };
+export interface AbortOptions { force?: boolean }
 
 function fatalAndExit(message: string): never {
   logger.fatal(message);

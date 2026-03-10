@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
 import { ClaudeClient } from '../lib/claude.js';
 import { findProjectRoot, loadConfig } from '../lib/config.js';
@@ -10,7 +10,7 @@ import { runReviewLoop } from '../lib/review-loop.js';
 import { loadState, saveState } from '../lib/state.js';
 import { ensureTaskDirectory, loadAndValidateTask, moveTaskFileAtomically } from '../lib/tasks.js';
 
-type ReviewOptions = { dryRun?: boolean; verbose?: boolean };
+interface ReviewOptions { dryRun?: boolean; verbose?: boolean }
 
 function fatalAndExit(message: string): never {
   logger.fatal(message);
@@ -101,7 +101,7 @@ export function registerReviewCommand(program: Command): void {
     .command('review')
     .description('Run review loop for the current step')
     .action(async (options: ReviewOptions, command: Command) => {
-      const merged = command.optsWithGlobals() as ReviewOptions;
+      const merged = command.optsWithGlobals();
       await runReview({ ...options, ...merged });
     });
 }

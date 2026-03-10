@@ -1,21 +1,21 @@
-import { execFile as execFileCb } from 'node:child_process';
+import {execFile as execFileCb} from 'node:child_process';
 
 import * as logger from './logger.js';
 
 const CODEX_TIMEOUT_MS = 600_000;
 
-export type CodexExecOptions = {
+export interface CodexExecOptions {
   spec: string;
   model: string;
   cwd: string;
   verbose?: boolean;
-};
+}
 
-export type CodexResult = {
+export interface CodexResult {
   stdout: string;
   stderr: string;
   exitCode: number;
-};
+}
 
 export class CodexError extends Error {
   stdout: string;
@@ -59,11 +59,11 @@ export async function checkCodexAvailable(): Promise<void> {
 export async function exec(opts: CodexExecOptions): Promise<CodexResult> {
   const args = ['exec', '--model', opts.model, '--full-auto', '--', opts.spec];
 
-  const result = await new Promise<CodexResult>((resolve, reject) => {
+  return await new Promise<CodexResult>((resolve, reject) => {
     execFileCb(
       'codex',
       args,
-      { cwd: opts.cwd, timeout: CODEX_TIMEOUT_MS, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 },
+      {cwd: opts.cwd, timeout: CODEX_TIMEOUT_MS, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024},
       (error, stdout, stderr) => {
         const normalizedStdout = stdout.trimEnd();
         const normalizedStderr = stderr.trimEnd();
@@ -91,6 +91,4 @@ export async function exec(opts: CodexExecOptions): Promise<CodexResult> {
       },
     );
   });
-
-  return result;
 }
