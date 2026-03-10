@@ -9,7 +9,8 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
