@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import { ARBITER_SYSTEM_PROMPT } from '../prompts/arbiter.js';
+import * as logger from './logger.js';
 import { REVIEWER_SYSTEM_PROMPT } from '../prompts/reviewer.js';
 import type { ArbiterResult, ReviewComment, ReviewResult } from '../types/index.js';
 
@@ -98,7 +99,11 @@ export class ClaudeClient {
           throw new ClaudeError(attempt, error);
         }
 
-        await sleep(1000 * 2 ** (attempt - 1));
+        const backoffMs = 1000 * 2 ** (attempt - 1);
+        logger.warn(
+          `Claude API error on attempt ${String(attempt)}/${String(MAX_ATTEMPTS)}. Retrying in ${String(Math.round(backoffMs / 1000))}s...`,
+        );
+        await sleep(backoffMs);
       }
     }
 

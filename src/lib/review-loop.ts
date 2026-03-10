@@ -33,6 +33,11 @@ export interface ReviewLoopResult {
   lastArbiterResult: ArbiterResult;
 }
 
+function formatElapsed(startedAt: number): string {
+  const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+  return `${String(seconds)}s`;
+}
+
 export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoopResult> {
   if (opts.dryRun) {
     logger.info(`[dry-run] Would run review loop for service ${opts.step.service}`);
@@ -58,8 +63,12 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
 
   for (;;) {
     logger.iteration(iteration + 1, opts.config.review.max_iterations);
+    logger.info(`Collecting git diff for service ${opts.step.service}`);
 
     const diff = await git.getDiff(serviceRoot);
+    if (opts.verbose) {
+      logger.info(`Diff collected (${String(diff.length)} chars)`);
+    }
     if (!diff.trim()) {
       return {
         decision: 'submit',
@@ -73,20 +82,49 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
       };
     }
 
-    const review = await opts.claude.runReviewer({
-      spec: opts.step.spec,
-      diff,
-      model: opts.config.review.model,
-    });
+    logger.info(`Requesting reviewer analysis (model: ${opts.config.review.model})`);
+    const reviewerStartedAt = Date.now();
+    const reviewerHeartbeat = opts.verbose
+      ? setInterval(() => {
+          logger.info(`Waiting for reviewer response (${formatElapsed(reviewerStartedAt)})`);
+        }, 15_000)
+      : null;
+    const review = await opts.claude
+      .runReviewer({
+        spec: opts.step.spec,
+        diff,
+        model: opts.config.review.model,
+      })
+      .finally(() => {
+        if (reviewerHeartbeat) {
+          clearInterval(reviewerHeartbeat);
+        }
+      });
+    logger.info(`Reviewer response received in ${formatElapsed(reviewerStartedAt)}`);
 
     logger.reviewSummary(review.comments);
 
-    const arbiter = await opts.claude.runArbiter({
-      spec: opts.step.spec,
-      diff,
-      reviewComments: review.comments,
-      model: opts.config.review.model,
-    });
+    logger.info(`Requesting arbiter decision (model: ${opts.config.review.model})`);
+    const arbiterStartedAt = Date.now();
+    const arbiterHeartbeat = opts.verbose
+      ? setInterval(() => {
+          logger.info(`Waiting for arbiter response (${formatElapsed(arbiterStartedAt)})`);
+        }, 15_000)
+      : null;
+    const arbiter = await opts.claude
+      .runArbiter({
+        spec: opts.step.spec,
+        diff,
+        reviewComments: review.comments,
+        model: opts.config.review.model,
+      })
+      .finally(() => {
+        if (arbiterHeartbeat) {
+          clearInterval(arbiterHeartbeat);
+        }
+      });
+    logger.info(`Arbiter response received in ${formatElapsed(arbiterStartedAt)}`);
+    logger.info(`Arbiter decision: ${arbiter.decision} (${arbiter.summary})`);
 
     state.saveIterationLog(opts.projectRoot, opts.taskId, opts.step.service, iteration, {
       diff,
@@ -141,6 +179,7 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
       };
     }
 
+    logger.info('Applying arbiter feedback with codex');
     await codex.exec({
       spec: arbiter.feedback_for_codex,
       model: opts.config.codex.model,

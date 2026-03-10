@@ -111,6 +111,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
       }
 
       if (!options.resume && !options.dryRun) {
+        logger.info(`Running codex implementation for service ${step.service}`);
         await codex.exec({
           spec: step.spec,
           model: config.codex.model,
@@ -121,6 +122,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
         logger.info(`[dry-run] Would run codex for service ${step.service}`);
       }
 
+      logger.info(`Starting review loop for service ${step.service}`);
       const result = await runReviewLoop({
         taskId: task.id,
         task,
@@ -188,6 +190,8 @@ export function registerStartCommand(program: Command): void {
     .command('start')
     .description('Start a task from a YAML file')
     .argument('<task-file>')
+    .option('--verbose', 'Enable verbose logs')
+    .option('--dry-run', 'Print plan without making changes')
     .option('--resume', 'Resume an existing active task')
     .action(async (taskFile: string, options: StartCommandOptions, command: Command) => {
       const merged = command.optsWithGlobals();

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 
 const { execFileMock } = vi.hoisted(() => ({
   execFileMock: vi.fn(),
@@ -63,5 +64,26 @@ describe('codex.exec', () => {
 
     expect(debugMock).toHaveBeenCalledWith('out');
     expect(debugMock).toHaveBeenCalledWith('err');
+  });
+
+  it('verbose mode streams stdout/stderr while process is running', async () => {
+    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => {
+      const stdout = new EventEmitter();
+      const stderr = new EventEmitter();
+
+      setTimeout(() => {
+        stdout.emit('data', 'phase 1\n');
+        stderr.emit('data', 'warn 1\n');
+        cb(null, 'phase 1\nphase 2\n', 'warn 1\n');
+      }, 0);
+
+      return { stdout, stderr };
+    });
+
+    await exec({ spec: 'do it', model: 'gpt-4o', cwd: '/repo', verbose: true });
+
+    expect(debugMock).toHaveBeenCalledWith('[codex:stdout] phase 1');
+    expect(debugMock).toHaveBeenCalledWith('[codex:stderr] warn 1');
+    expect(debugMock).not.toHaveBeenCalledWith('phase 1\nphase 2');
   });
 });

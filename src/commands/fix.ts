@@ -61,6 +61,7 @@ export async function runFix(feedback: string, options: FixOptions): Promise<voi
       });
     }
 
+    logger.info(`Running review loop for service ${step.service}`);
     const result = await runReviewLoop({
       taskId: task.id,
       task,
@@ -99,6 +100,8 @@ export function registerFixCommand(program: Command): void {
     .command('fix')
     .description('Provide feedback to codex and rerun review')
     .argument('<feedback>')
+    .option('--verbose', 'Enable verbose logs')
+    .option('--dry-run', 'Print plan without making changes')
     .action(async (feedback: string, options: FixOptions, command: Command) => {
       const merged = command.optsWithGlobals();
       await runFix(feedback, { ...options, ...merged });

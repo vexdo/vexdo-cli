@@ -49,6 +49,7 @@ export async function runReview(options: ReviewOptions): Promise<void> {
       fatalAndExit(`Could not locate task step for service '${currentStep.service}'.`);
     }
 
+    logger.info(`Running review loop for service ${step.service}`);
     const result = await runReviewLoop({
       taskId: task.id,
       task,
@@ -100,6 +101,8 @@ export function registerReviewCommand(program: Command): void {
   program
     .command('review')
     .description('Run review loop for the current step')
+    .option('--verbose', 'Enable verbose logs')
+    .option('--dry-run', 'Print plan without making changes')
     .action(async (options: ReviewOptions, command: Command) => {
       const merged = command.optsWithGlobals();
       await runReview({ ...options, ...merged });
