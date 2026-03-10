@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "commander": "^12.1.0",
     "ora": "^8.1.1",
     "picocolors": "^1.1.1",
