@@ -199,38 +199,80 @@ Non-goals:
 
 ## 10) Roadmap
 
-Vexdo currently runs tasks sequentially using a local Codex subprocess. The next major
-evolution moves toward cloud-native execution and parallel orchestration.
+Vexdo currently runs tasks sequentially using a local Codex subprocess. The roadmap
+evolves the orchestrator toward cloud-native execution, smarter context management,
+and better observability.
 
-### Codex Cloud execution
+### Cloud execution and parallelism
 
-Replace local `codex exec` with **Codex Cloud** (`codex cloud exec`). Each task step runs
-in an isolated cloud sandbox with direct GitHub repository access — no local git state
-required. The orchestrator submits tasks, polls for completion, retrieves diffs via
-`codex cloud diff`, and uses `codex cloud exec resume` to continue the same session on
-fix iterations. This eliminates conflicts between parallel tasks and removes the dependency
-on a clean local working tree.
+- **Codex Cloud execution** — replace local `codex exec` with `codex cloud exec`. Each
+  step runs in an isolated cloud sandbox with direct GitHub repository access. The
+  orchestrator submits tasks, polls for completion, retrieves diffs, and uses
+  `codex cloud exec resume` for fix iterations. Eliminates local git state dependencies.
 
-### Parallel step execution
+- **Parallel step execution** — once isolation is handled by Codex Cloud, steps without
+  `depends_on` relationships dispatch concurrently. A dependency-aware worker pool means
+  a three-service task completes in the time of its longest step, not the sum of all.
 
-Once isolation is handled by Codex Cloud, steps without `depends_on` relationships can
-run concurrently. A worker pool dispatches all unblocked steps simultaneously and waits
-for dependencies before starting dependent ones. A task touching three services can
-complete in roughly the time of its longest step, not the sum of all.
+### Review and verification
 
-### GitHub Copilot CLI as reviewer
+- **GitHub Copilot CLI as reviewer** — replace the Claude-based reviewer with
+  `copilot --output-format=json`. Copilot reads the local diff with full repository
+  context (imports, types, related files). Claude stays as the Arbiter.
 
-Replace the Claude-based reviewer with **GitHub Copilot CLI** (`copilot --output-format=json`).
-Copilot reads the local git diff with full repository context — it understands imports,
-types, and related files beyond the diff itself. Claude stays as the Arbiter that decides
-whether to submit, fix, or escalate based on Copilot's structured output.
+- **Verification ladder** — structured must-haves in task YAML (`must_haves: [...]`).
+  Arbiter verifies each requirement against the diff at four tiers: static (file/export
+  presence), command (tests pass), behavioral (observable output), or human (escalate).
+  Submit is only allowed when all must-haves pass.
+
+- **Stuck detection** — if Codex produces the same diff twice, a diagnostic retry fires
+  with a targeted prompt. On a second identical diff, the loop escalates with a structured
+  diagnostic showing exactly which review comments were not addressed.
+
+### Context and memory
+
+- **Fresh context injection** — before each Codex submission, prepend summaries of
+  completed steps and the decisions register to the prompt. Prevents Codex from
+  re-implementing utilities already built by earlier steps. Capped at 2000 tokens.
+
+- **Decisions register** — `.vexdo/decisions.md`: an append-only table of architectural
+  decisions made during execution (validation library, storage strategy, naming conventions).
+  Arbiter populates it automatically; injected into every subsequent step prompt.
+
+- **Scout agent** — a focused Claude call before Codex submission that scans the target
+  service's codebase and returns relevant existing files, reuse hints, and conventions to
+  follow. Non-fatal: if Scout fails, execution continues without it.
+
+- **Adaptive replanning** — after each step completes, a lightweight Claude call checks
+  whether remaining step specs are still accurate. Proposes updates for developer
+  confirmation before the next step runs.
+
+### Resilience
+
+- **Continue-here protocol** — `.vexdo/continue.md` checkpoint written at every major
+  phase transition (codex submitted, codex done, review iteration, arbiter done).
+  `vexdo start --resume` reads the checkpoint and resumes from the exact saved position
+  rather than re-entering the step from the beginning.
+
+### Observability and interaction
+
+- **Cost and token tracking** — every Claude API call captures token usage and estimated
+  cost. Per-step and total costs are shown in `vexdo status`. Optional budget ceiling in
+  `.vexdo.yml` pauses execution before overspending.
+
+- **UAT script generation** — after all steps complete, Vexdo writes `.vexdo/uat.md`:
+  a human test script derived from step must-haves and Arbiter summaries. `vexdo submit`
+  warns if UAT items are unchecked (override with `--skip-uat`).
+
+- **Discuss command** — `vexdo discuss <task-id>` opens an interactive Claude session
+  with full task context pre-loaded. Ask questions about what was built, queue spec
+  updates for pending steps, steer execution from a second terminal while `start` runs.
 
 ### Task board TUI
 
 A `vexdo board` command built with **Ink** (React for CLIs) that renders all task lanes
-as a navigable terminal board. Keyboard shortcuts to start, edit, inspect, and abort tasks
-without leaving the terminal. Live status for in-progress tasks when the orchestrator is
-running.
+as a navigable terminal board. Keyboard shortcuts to start, edit, inspect, and abort
+tasks without leaving the terminal.
 
 ## 11) Contributing
 
