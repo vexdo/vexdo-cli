@@ -98,7 +98,7 @@ describe('start integration', () => {
 
     await runStart(taskPath, {});
 
-    expect(mocks.createBranch).toHaveBeenCalledWith('vexdo/t1/api', path.join(root, 'services', 'api'));
+    expect(mocks.createBranch).toHaveBeenCalledWith('vexdo/t1/api', expect.stringMatching(/[\\/]services[\\/]api$/));
     expect(fs.existsSync(path.join(root, 'tasks', 'in_progress', 'task.yml'))).toBe(false);
     expect(fs.existsSync(path.join(root, 'tasks', 'review', 'task.yml'))).toBe(true);
   });
@@ -170,6 +170,34 @@ describe('start integration', () => {
     await runStart(taskPath, { resume: true });
 
     expect(mocks.codexExec).not.toHaveBeenCalled();
+  });
+
+  it('--resume creates branch and runs codex for pending steps', async () => {
+    const root = tmpDir();
+    setupProject(root);
+    const inProgressDir = path.join(root, 'tasks', 'in_progress');
+    fs.mkdirSync(inProgressDir, { recursive: true });
+    const taskPath = path.join(inProgressDir, 'task.yml');
+    fs.writeFileSync(taskPath, 'id: t1\ntitle: Demo\nsteps:\n  - service: api\n    spec: do work\n');
+    fs.mkdirSync(path.join(root, '.vexdo'), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, '.vexdo', 'state.json'),
+      JSON.stringify({
+        taskId: 't1',
+        taskTitle: 'Demo',
+        taskPath,
+        status: 'in_progress',
+        steps: [{ service: 'api', status: 'pending', iteration: 0 }],
+        startedAt: 'a',
+        updatedAt: 'a',
+      }),
+    );
+    process.chdir(root);
+
+    await runStart(taskPath, { resume: true });
+
+    expect(mocks.createBranch).toHaveBeenCalledWith('vexdo/t1/api', expect.stringMatching(/[\\/]services[\\/]api$/));
+    expect(mocks.codexExec).toHaveBeenCalled();
   });
 
   it('--dry-run logs plan without codex/review calls and no file moves', async () => {

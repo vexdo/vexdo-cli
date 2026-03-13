@@ -95,10 +95,15 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
 
       const serviceRoot = path.resolve(projectRoot, serviceCfg.path);
       const branch = git.getBranchName(task.id, step.service);
+      const previousStatus = stepState.status;
 
       if (!options.dryRun) {
         if (options.resume) {
-          await git.checkoutBranch(stepState.branch ?? branch, serviceRoot);
+          if (stepState.branch) {
+            await git.checkoutBranch(stepState.branch, serviceRoot);
+          } else {
+            await git.createBranch(branch, serviceRoot);
+          }
         } else {
           await git.createBranch(branch, serviceRoot);
         }
@@ -110,7 +115,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
         saveState(projectRoot, state);
       }
 
-      if (!options.resume && !options.dryRun) {
+      if (!options.dryRun && (!options.resume || previousStatus === 'pending')) {
         logger.info(`Running codex implementation for service ${step.service}`);
         await codex.exec({
           spec: step.spec,

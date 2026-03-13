@@ -197,10 +197,45 @@ Non-goals:
 - **Task escalated**
   - Review `.vexdo/logs/*` and rerun with `vexdo fix "..."`.
 
-## 10) Contributing
+## 10) Roadmap
+
+Vexdo currently runs tasks sequentially using a local Codex subprocess. The next major
+evolution moves toward cloud-native execution and parallel orchestration.
+
+### Codex Cloud execution
+
+Replace local `codex exec` with **Codex Cloud** (`codex cloud exec`). Each task step runs
+in an isolated cloud sandbox with direct GitHub repository access — no local git state
+required. The orchestrator submits tasks, polls for completion, retrieves diffs via
+`codex cloud diff`, and uses `codex cloud exec resume` to continue the same session on
+fix iterations. This eliminates conflicts between parallel tasks and removes the dependency
+on a clean local working tree.
+
+### Parallel step execution
+
+Once isolation is handled by Codex Cloud, steps without `depends_on` relationships can
+run concurrently. A worker pool dispatches all unblocked steps simultaneously and waits
+for dependencies before starting dependent ones. A task touching three services can
+complete in roughly the time of its longest step, not the sum of all.
+
+### GitHub Copilot CLI as reviewer
+
+Replace the Claude-based reviewer with **GitHub Copilot CLI** (`copilot --output-format=json`).
+Copilot reads the local git diff with full repository context — it understands imports,
+types, and related files beyond the diff itself. Claude stays as the Arbiter that decides
+whether to submit, fix, or escalate based on Copilot's structured output.
+
+### Task board TUI
+
+A `vexdo board` command built with **Ink** (React for CLIs) that renders all task lanes
+as a navigable terminal board. Keyboard shortcuts to start, edit, inspect, and abort tasks
+without leaving the terminal. Live status for in-progress tasks when the orchestrator is
+running.
+
+## 11) Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-## 11) License
+## 12) License
 
 MIT.
