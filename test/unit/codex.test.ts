@@ -1,89 +1,106 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { EventEmitter } from 'node:events';
+import {EventEmitter} from 'node:events';
 
-const { execFileMock } = vi.hoisted(() => ({
-  execFileMock: vi.fn(),
-}));
-const { debugMock } = vi.hoisted(() => ({
-  debugMock: vi.fn(),
+import {beforeEach, describe, expect, it, vi} from 'vitest';
+
+const {spawnMock} = vi.hoisted(() => ({
+  spawnMock: vi.fn(),
 }));
 
 vi.mock('node:child_process', () => ({
-  execFile: execFileMock,
+  spawn: spawnMock,
 }));
 
-vi.mock('../../src/lib/logger.js', () => ({
-  debug: debugMock,
-}));
+import {
+  CodexError,
+  CodexNotFoundError,
+  CodexTimeoutError,
+  checkCodexAvailable,
+  getDiff,
+  pollStatus,
+  resumeTask,
+  submitTask,
+} from '../../src/lib/codex.js';
 
-import { CodexError, CodexNotFoundError, checkCodexAvailable, exec } from '../../src/lib/codex.js';
+function mockSpawnRun(stdoutText: string, stderrText = '', exitCode = 0): void {
+  spawnMock.mockImplementation(() => {
+    const stdout = new EventEmitter();
+    const stderr = new EventEmitter();
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+      kill: () => void;
+    };
+    child.stdout = stdout;
+    child.stderr = stderr;
+    child.kill = vi.fn();
+
+    setTimeout(() => {
+      stdout.emit('data', stdoutText);
+      stderr.emit('data', stderrText);
+      child.emit('close', exitCode);
+    }, 0);
+
+    return child;
+  });
+}
 
 beforeEach(() => {
-  execFileMock.mockReset();
-  debugMock.mockReset();
+  spawnMock.mockReset();
 });
 
 describe('checkCodexAvailable', () => {
   it('resolves when codex --version exits 0', async () => {
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => cb(null, '1.0.0', ''));
+    mockSpawnRun('1.0.0\n');
 
     await expect(checkCodexAvailable()).resolves.toBeUndefined();
-    expect(execFileMock).toHaveBeenCalledWith('codex', ['--version'], expect.any(Object), expect.any(Function));
   });
 
-  it('throws CodexNotFoundError when codex not found', async () => {
-    const error = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => cb(error, '', ''));
+  it('throws CodexNotFoundError when codex is unavailable', async () => {
+    spawnMock.mockImplementation(() => {
+      const child = new EventEmitter() as EventEmitter & {
+        stdout: EventEmitter;
+        stderr: EventEmitter;
+        kill: () => void;
+      };
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = vi.fn();
+      setTimeout(() => child.emit('error', new Error('ENOENT')), 0);
+      return child;
+    });
 
     await expect(checkCodexAvailable()).rejects.toBeInstanceOf(CodexNotFoundError);
   });
 });
 
-describe('codex.exec', () => {
-  it('resolves CodexResult on success', async () => {
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => cb(null, 'done\n', 'warn\n'));
+describe('cloud task lifecycle commands', () => {
+  it('submitTask parses session_id', async () => {
+    mockSpawnRun('session_id: sess_123\n');
 
-    await expect(exec({ spec: 'do it', model: 'gpt-4o', cwd: '/repo' })).resolves.toEqual({
-      stdout: 'done',
-      stderr: 'warn',
-      exitCode: 0,
-    });
+    await expect(submitTask('do work', {cwd: '/repo'})).resolves.toBe('sess_123');
   });
 
-  it('throws CodexError on non-zero exit', async () => {
-    const error = Object.assign(new Error('bad'), { code: 9 });
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => cb(error, 'partial', 'failed'));
+  it('resumeTask parses next session_id', async () => {
+    mockSpawnRun('{"session_id":"sess_next"}\n');
 
-    await expect(exec({ spec: 'do it', model: 'gpt-4o', cwd: '/repo' })).rejects.toBeInstanceOf(CodexError);
+    await expect(resumeTask('sess_123', 'fix this')).resolves.toBe('sess_next');
   });
 
-  it('verbose mode passes output to logger.debug', async () => {
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => cb(null, 'out', 'err'));
+  it('pollStatus resolves completed status', async () => {
+    mockSpawnRun('status: completed\n');
 
-    await exec({ spec: 'do it', model: 'gpt-4o', cwd: '/repo', verbose: true });
-
-    expect(debugMock).toHaveBeenCalledWith('out');
-    expect(debugMock).toHaveBeenCalledWith('err');
+    await expect(pollStatus('sess_123', {intervalMs: 1, timeoutMs: 1000})).resolves.toBe('completed');
   });
 
-  it('verbose mode streams stdout/stderr while process is running', async () => {
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => {
-      const stdout = new EventEmitter();
-      const stderr = new EventEmitter();
+  it('pollStatus throws timeout when non-terminal status persists', async () => {
+    mockSpawnRun('status: running\n');
 
-      setTimeout(() => {
-        stdout.emit('data', 'phase 1\n');
-        stderr.emit('data', 'warn 1\n');
-        cb(null, 'phase 1\nphase 2\n', 'warn 1\n');
-      }, 0);
+    await expect(pollStatus('sess_123', {intervalMs: 1, timeoutMs: 5})).rejects.toBeInstanceOf(CodexTimeoutError);
+  });
 
-      return { stdout, stderr };
-    });
+  it('getDiff throws when diff is empty', async () => {
+    mockSpawnRun(' \n');
 
-    await exec({ spec: 'do it', model: 'gpt-4o', cwd: '/repo', verbose: true });
-
-    expect(debugMock).toHaveBeenCalledWith('[codex:stdout] phase 1');
-    expect(debugMock).toHaveBeenCalledWith('[codex:stderr] warn 1');
-    expect(debugMock).not.toHaveBeenCalledWith('phase 1\nphase 2');
+    await expect(getDiff('sess_123')).rejects.toBeInstanceOf(CodexError);
   });
 });

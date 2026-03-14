@@ -6,6 +6,14 @@ export type StepStatus = 'pending' | 'in_progress' | 'done' | 'failed' | 'escala
 
 export type TaskStatus = 'in_progress' | 'review' | 'done' | 'blocked' | 'escalated';
 
+export type CodexErrorCode =
+  | 'submit_failed'
+  | 'resume_failed'
+  | 'poll_timeout'
+  | 'poll_failed'
+  | 'diff_empty'
+  | 'apply_failed';
+
 export interface ServiceConfig {
   name: string;
   path: string;
@@ -67,6 +75,7 @@ export interface StepState {
   branch?: string;
   lastReviewComments?: ReviewComment[];
   lastArbiterResult?: ArbiterResult;
+  session_id?: string;
 }
 
 export interface VexdoState {
