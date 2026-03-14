@@ -106,7 +106,7 @@ describe('start integration', () => {
 
     expect(mocks.createBranch).toHaveBeenCalledWith('vexdo/t1/api', expect.stringMatching(/[\\/]services[\\/]api$/));
     expect(mocks.submitTask).toHaveBeenCalled();
-    expect(mocks.pollStatus).toHaveBeenCalledWith('sess-1', expect.objectContaining({intervalMs: expect.any(Number)}));
+    expect(mocks.pollStatus).toHaveBeenCalledWith('sess-1', expect.objectContaining({intervalMs: 5_000, timeoutMs: 600_000}));
     expect(mocks.getDiff).toHaveBeenCalledWith('sess-1');
     expect(fs.existsSync(path.join(root, 'tasks', 'review', 'task.yml'))).toBe(true);
   });

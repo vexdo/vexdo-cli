@@ -112,7 +112,7 @@ describe('review integration', () => {
 
     await runReview({});
 
-    const state = JSON.parse(fs.readFileSync(path.join(root, '.vexdo', 'state.json'), 'utf8')) as { steps: Array<{ status: string }> };
+    const state = JSON.parse(fs.readFileSync(path.join(root, '.vexdo', 'state.json'), 'utf8')) as { steps: { status: string }[] };
     expect(state.steps[0]?.status).toBe('done');
   });
 

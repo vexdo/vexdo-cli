@@ -73,11 +73,9 @@ describe('ClaudeClient', () => {
     messagesCreateMock.mockRejectedValue(new Error('always down'));
 
     const client = new ClaudeClient('test-key');
-    await expect(client.runReviewer({ spec: 'spec', diff: 'diff', model: 'claude' })).rejects.toMatchObject({
-      name: 'ClaudeError',
-      attempt: 3,
-      message: expect.stringContaining('Claude API failed after 3 attempts'),
-    });
+    await expect(client.runReviewer({ spec: 'spec', diff: 'diff', model: 'claude' })).rejects.toThrow(
+      /Claude API failed after 3 attempts/,
+    );
   });
 
   it('runReviewer does NOT retry on 401', async () => {

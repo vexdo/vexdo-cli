@@ -72,9 +72,6 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
     for (let i = 0; i < task.steps.length; i += 1) {
       const step = task.steps[i];
       const stepState = state.steps[i];
-      if (!step || !stepState) {
-        continue;
-      }
 
       if (stepState.status === 'done') {
         continue;

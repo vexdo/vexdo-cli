@@ -143,7 +143,7 @@ function extractJson(text: string): string {
   }
 
   const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
-  if (fenced && fenced[1]) {
+  if (fenced?.[1]) {
     return fenced[1].trim();
   }
 
