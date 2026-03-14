@@ -218,7 +218,7 @@ export async function applyDiff(sessionId: string): Promise<void> {
   }
 }
 
-export async function exec(opts: {spec: string; cwd: string}): Promise<void> {
+export async function exec(opts: {spec: string; cwd: string; model?: string; verbose?: boolean}): Promise<void> {
   const sessionId = await submitTask(opts.spec, {cwd: opts.cwd});
   const status = await pollStatus(sessionId, {intervalMs: 2_000, timeoutMs: CODEX_TIMEOUT_MS});
   if (status !== 'completed') {
