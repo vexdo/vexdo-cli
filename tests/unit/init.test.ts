@@ -30,13 +30,13 @@ describe('runInit', () => {
       'gpt-4.1',
     ];
 
-    await runInit(root, async () => answers.shift() ?? '');
+    await runInit(root, () => Promise.resolve(answers.shift() ?? ''));
 
     const configPath = path.join(root, '.vexdo.yml');
     expect(fs.existsSync(configPath)).toBe(true);
 
     const config = parse(fs.readFileSync(configPath, 'utf8')) as {
-      services: Array<{ name: string; path: string }>;
+      services: { name: string; path: string }[];
       review: { model: string; max_iterations: number; auto_submit: boolean };
       codex: { model: string };
     };
@@ -62,13 +62,13 @@ describe('runInit', () => {
     const root = makeTempDir();
 
     const answersFirst = ['api', '', '', '', 'n', ''];
-    await runInit(root, async () => answersFirst.shift() ?? '');
+    await runInit(root, () => Promise.resolve(answersFirst.shift() ?? ''));
 
     let gitignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf8');
     expect((gitignore.match(/\.vexdo\//g) ?? []).length).toBe(1);
 
     const answersSecond = ['y', 'api', '', '', '', 'n', ''];
-    await runInit(root, async () => answersSecond.shift() ?? '');
+    await runInit(root, () => Promise.resolve(answersSecond.shift() ?? ''));
 
     gitignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf8');
     expect((gitignore.match(/\.vexdo\//g) ?? []).length).toBe(1);
@@ -79,7 +79,7 @@ describe('runInit', () => {
     fs.writeFileSync(path.join(root, '.vexdo.yml'), 'version: 1\nservices: []\n', 'utf8');
 
     const warnSpy = vi.spyOn(logger, 'warn');
-    const promptSpy = vi.fn(async () => 'n');
+    const promptSpy = vi.fn(() => Promise.resolve('n'));
 
     await runInit(root, promptSpy);
 

@@ -1,7 +1,12 @@
+import type { ExecFileException } from 'node:child_process';
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+type ExecFileCallback = (error: ExecFileException | null, stdout: string, stderr: string) => void;
+type ExecFileMockImpl = (cmd: string, args: string[], opts: unknown, cb: ExecFileCallback) => void;
+
 const { execFileMock } = vi.hoisted(() => ({
-  execFileMock: vi.fn(),
+  execFileMock: vi.fn<ExecFileMockImpl>(),
 }));
 
 vi.mock('node:child_process', () => ({
@@ -29,14 +34,18 @@ beforeEach(() => {
 
 describe('git.exec', () => {
   it('resolves stdout on success', async () => {
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => cb(null, 'hello\n', ''));
+    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => {
+      cb(null, 'hello\n', '');
+    });
 
     await expect(exec(['status'], '/repo')).resolves.toBe('hello');
   });
 
   it('throws GitError on non-zero exit with fields', async () => {
     const error = Object.assign(new Error('failed'), { code: 2 });
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => cb(error, '', 'bad things'));
+    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => {
+      cb(error, '', 'bad things');
+    });
 
     await expect(exec(['status'], '/repo')).rejects.toMatchObject({
       name: 'GitError',
@@ -54,16 +63,22 @@ describe('git helpers', () => {
   });
 
   it('getDiff returns empty string when no changes', async () => {
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => cb(null, '', ''));
+    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => {
+      cb(null, '', '');
+    });
 
     await expect(getDiff('/repo')).resolves.toBe('');
   });
 
   it('hasUncommittedChanges returns true/false from porcelain status', async () => {
-    execFileMock.mockImplementationOnce((_cmd, _args, _opts, cb) => cb(null, ' M file.ts\n', ''));
+    execFileMock.mockImplementationOnce((_cmd, _args, _opts, cb) => {
+      cb(null, ' M file.ts\n', '');
+    });
     await expect(hasUncommittedChanges('/repo')).resolves.toBe(true);
 
-    execFileMock.mockImplementationOnce((_cmd, _args, _opts, cb) => cb(null, '', ''));
+    execFileMock.mockImplementationOnce((_cmd, _args, _opts, cb) => {
+      cb(null, '', '');
+    });
     await expect(hasUncommittedChanges('/repo')).resolves.toBe(false);
   });
 
@@ -101,7 +116,9 @@ describe('git helpers', () => {
 
   it('branchExists returns false on exit code 1', async () => {
     const error = Object.assign(new Error('not found'), { code: 1 });
-    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => cb(error, '', ''));
+    execFileMock.mockImplementation((_cmd, _args, _opts, cb) => {
+      cb(error, '', '');
+    });
 
     await expect(branchExists('missing', '/repo')).resolves.toBe(false);
   });

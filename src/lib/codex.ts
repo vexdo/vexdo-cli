@@ -1,35 +1,51 @@
-import {execFile as execFileCb} from 'node:child_process';
-import type {Readable} from 'node:stream';
-
-import * as logger from './logger.js';
+import {spawn} from 'node:child_process';
 
 const CODEX_TIMEOUT_MS = 600_000;
-const VERBOSE_HEARTBEAT_MS = 15_000;
 
-export interface CodexExecOptions {
-  spec: string;
-  model: string;
-  cwd: string;
-  verbose?: boolean;
-}
-
-export interface CodexResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
+export type CodexTaskStatus = 'completed' | 'failed';
 
 export class CodexError extends Error {
+  code:
+    | 'submit_failed'
+    | 'resume_failed'
+    | 'poll_timeout'
+    | 'poll_failed'
+    | 'diff_empty'
+    | 'apply_failed';
   stdout: string;
   stderr: string;
   exitCode: number;
 
-  constructor(stdout: string, stderr: string, exitCode: number) {
-    super(`codex exec failed (exit ${String(exitCode)})`);
+  constructor(
+    code:
+      | 'submit_failed'
+      | 'resume_failed'
+      | 'poll_timeout'
+      | 'poll_failed'
+      | 'diff_empty'
+      | 'apply_failed',
+    message: string,
+    details?: {stdout?: string; stderr?: string; exitCode?: number},
+  ) {
+    super(message);
     this.name = 'CodexError';
-    this.stdout = stdout;
-    this.stderr = stderr;
-    this.exitCode = exitCode;
+    this.code = code;
+    this.stdout = details?.stdout ?? '';
+    this.stderr = details?.stderr ?? '';
+    this.exitCode = details?.exitCode ?? 1;
+  }
+}
+
+export class CodexTimeoutError extends CodexError {
+  sessionId: string;
+
+  constructor(sessionId: string, timeoutMs: number) {
+    super(
+      'poll_timeout',
+      `Timed out waiting for codex cloud session ${sessionId} after ${String(timeoutMs)}ms. Check status with: codex cloud status ${sessionId}`,
+    );
+    this.name = 'CodexTimeoutError';
+    this.sessionId = sessionId;
   }
 }
 
@@ -40,129 +56,173 @@ export class CodexNotFoundError extends Error {
   }
 }
 
-function formatElapsed(startedAt: number): string {
-  const seconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
-  return `${String(seconds)}s`;
+interface CommandResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
 }
 
-function buildVerboseStreamHandler(label: 'stdout' | 'stderr'): {
-  onData: (chunk: Buffer | string) => void;
-  flush: () => void;
-} {
-  let partialLine = '';
+function runCodexCommand(args: string[], opts?: {cwd?: string; timeoutMs?: number}): Promise<CommandResult> {
+  return new Promise<CommandResult>((resolve, reject) => {
+    const child = spawn('codex', args, {
+      cwd: opts?.cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
 
-  return {
-    onData(chunk: Buffer | string): void {
-      partialLine += chunk.toString();
-      const lines = partialLine.split(/\r?\n/);
-      partialLine = lines.pop() ?? '';
-      for (const line of lines) {
-        if (!line) {
-          continue;
-        }
-        logger.debug(`[codex:${label}] ${line}`);
-      }
-    },
-    flush(): void {
-      if (!partialLine) {
-        return;
-      }
-      logger.debug(`[codex:${label}] ${partialLine}`);
-      partialLine = '';
-    },
-  };
-}
+    let stdout = '';
+    let stderr = '';
 
-/**
- * Ensure codex CLI is installed and executable.
- */
-export async function checkCodexAvailable(): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    execFileCb('codex', ['--version'], { timeout: CODEX_TIMEOUT_MS, encoding: 'utf8' }, (error) => {
-      if (error) {
-        reject(new CodexNotFoundError());
-        return;
-      }
-      resolve();
+    child.stdout.on('data', (chunk: Buffer | string) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk: Buffer | string) => {
+      stderr += chunk.toString();
+    });
+
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM');
+      reject(new Error(`codex command timed out after ${String(opts?.timeoutMs ?? CODEX_TIMEOUT_MS)}ms`));
+    }, opts?.timeoutMs ?? CODEX_TIMEOUT_MS);
+
+    child.once('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+
+    child.once('close', (code) => {
+      clearTimeout(timeout);
+      resolve({
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        exitCode: code ?? 1,
+      });
     });
   });
 }
 
-/**
- * Execute codex with a task spec and model.
- */
-export async function exec(opts: CodexExecOptions): Promise<CodexResult> {
-  const args = ['exec', '--model', opts.model, '--full-auto', '--', opts.spec];
-  const startedAt = Date.now();
-
-  if (opts.verbose) {
-    logger.debug(`[codex] starting (model=${opts.model}, cwd=${opts.cwd})`);
+function parseSessionId(output: string): string | null {
+  const match = /session[_-]?id\s*[:=]\s*([A-Za-z0-9._-]+)/i.exec(output);
+  if (match?.[1]) {
+    return match[1];
   }
 
-  return await new Promise<CodexResult>((resolve, reject) => {
-    let liveLogsAttached = false;
-    const stdoutHandler = buildVerboseStreamHandler('stdout');
-    const stderrHandler = buildVerboseStreamHandler('stderr');
-
-    const heartbeat = opts.verbose
-      ? setInterval(() => {
-          logger.debug(`[codex] still running (${formatElapsed(startedAt)})`);
-        }, VERBOSE_HEARTBEAT_MS)
-      : null;
-
-    const child = execFileCb(
-      'codex',
-      args,
-      {cwd: opts.cwd, timeout: CODEX_TIMEOUT_MS, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024},
-      (error, stdout, stderr) => {
-        if (heartbeat) {
-          clearInterval(heartbeat);
-        }
-
-        stdoutHandler.flush();
-        stderrHandler.flush();
-
-        const normalizedStdout = stdout.trimEnd();
-        const normalizedStderr = stderr.trimEnd();
-
-        if (opts.verbose) {
-          logger.debug(`[codex] finished in ${formatElapsed(startedAt)}`);
-          if (!liveLogsAttached && normalizedStdout) {
-            logger.debug(normalizedStdout);
-          }
-          if (!liveLogsAttached && normalizedStderr) {
-            logger.debug(normalizedStderr);
-          }
-        }
-
-        if (error) {
-          const exitCode = typeof error.code === 'number' ? error.code : 1;
-          if (opts.verbose) {
-            logger.debug(`[codex] failed in ${formatElapsed(startedAt)} with exit ${String(exitCode)}`);
-          }
-          reject(new CodexError(normalizedStdout, normalizedStderr || error.message, exitCode));
-          return;
-        }
-
-        resolve({
-          stdout: normalizedStdout,
-          stderr: normalizedStderr,
-          exitCode: 0,
-        });
-      },
-    );
-
-    if (opts.verbose) {
-      const stdout = child.stdout as Readable | null;
-      const stderr = child.stderr as Readable | null;
-      if (stdout) {
-        liveLogsAttached = true;
-        stdout.on('data', stdoutHandler.onData);
-      }
-      if (stderr) {
-        liveLogsAttached = true;
-        stderr.on('data', stderrHandler.onData);
-      }
+  for (const line of output.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+      continue;
     }
-  });
+
+    try {
+      const parsed = JSON.parse(trimmed) as {session_id?: unknown};
+      if (typeof parsed.session_id === 'string' && parsed.session_id.length > 0) {
+        return parsed.session_id;
+      }
+    } catch {
+      // ignore non-json lines
+    }
+  }
+
+  return null;
+}
+
+function parseStatus(output: string): CodexTaskStatus | null {
+  const match = /\b(completed|failed)\b/i.exec(output);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  return match[1].toLowerCase() as CodexTaskStatus;
+}
+
+export async function checkCodexAvailable(): Promise<void> {
+  try {
+    const result = await runCodexCommand(['--version']);
+    if (result.exitCode !== 0) {
+      throw new CodexNotFoundError();
+    }
+  } catch {
+    throw new CodexNotFoundError();
+  }
+}
+
+export async function submitTask(prompt: string, options?: {cwd?: string}): Promise<string> {
+  const args = ['cloud', 'exec', prompt];
+  if (options?.cwd) {
+    args.push('-C', options.cwd);
+  }
+
+  const result = await runCodexCommand(args, {cwd: options?.cwd});
+  const sessionId = parseSessionId(result.stdout);
+
+  if (result.exitCode !== 0 || !sessionId) {
+    throw new CodexError('submit_failed', 'Failed to submit task to codex cloud.', result);
+  }
+
+  return sessionId;
+}
+
+export async function resumeTask(sessionId: string, feedback: string): Promise<string> {
+  const result = await runCodexCommand(['cloud', 'exec', 'resume', sessionId, feedback]);
+  const nextSessionId = parseSessionId(result.stdout);
+
+  if (result.exitCode !== 0 || !nextSessionId) {
+    throw new CodexError('resume_failed', `Failed to resume codex cloud session ${sessionId}.`, result);
+  }
+
+  return nextSessionId;
+}
+
+export async function pollStatus(sessionId: string, opts: {intervalMs: number; timeoutMs: number}): Promise<CodexTaskStatus> {
+  const startedAt = Date.now();
+
+  for (;;) {
+    const result = await runCodexCommand(['cloud', 'status', sessionId]);
+
+    if (result.exitCode !== 0) {
+      throw new CodexError('poll_failed', `Failed to poll codex cloud status for session ${sessionId}.`, result);
+    }
+
+    const status = parseStatus(result.stdout);
+    if (status === 'completed' || status === 'failed') {
+      return status;
+    }
+
+    if (Date.now() - startedAt >= opts.timeoutMs) {
+      throw new CodexTimeoutError(sessionId, opts.timeoutMs);
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, opts.intervalMs);
+    });
+  }
+}
+
+export async function getDiff(sessionId: string): Promise<string> {
+  const result = await runCodexCommand(['cloud', 'diff', sessionId]);
+  if (result.exitCode !== 0) {
+    throw new CodexError('poll_failed', `Failed to get diff for codex cloud session ${sessionId}.`, result);
+  }
+
+  if (!result.stdout.trim()) {
+    throw new CodexError('diff_empty', `Diff was empty for codex cloud session ${sessionId}.`, result);
+  }
+
+  return result.stdout;
+}
+
+export async function applyDiff(sessionId: string): Promise<void> {
+  const result = await runCodexCommand(['cloud', 'apply', sessionId]);
+  if (result.exitCode !== 0) {
+    throw new CodexError('apply_failed', `Failed to apply diff for codex cloud session ${sessionId}.`, result);
+  }
+}
+
+export async function exec(opts: {spec: string; cwd: string; model?: string; verbose?: boolean}): Promise<void> {
+  const sessionId = await submitTask(opts.spec, {cwd: opts.cwd});
+  const status = await pollStatus(sessionId, {intervalMs: 2_000, timeoutMs: CODEX_TIMEOUT_MS});
+  if (status !== 'completed') {
+    throw new CodexError('submit_failed', `Codex cloud session ${sessionId} ended with status '${status}'.`);
+  }
+  await applyDiff(sessionId);
 }

@@ -8,10 +8,13 @@ import { findProjectRoot, loadConfig } from '../lib/config.js';
 import * as git from '../lib/git.js';
 import * as logger from '../lib/logger.js';
 import { requireAnthropicApiKey } from '../lib/requirements.js';
-import { runReviewLoop } from '../lib/review-loop.js';
-import { createState, hasActiveTask, loadState, saveState } from '../lib/state.js';
+import { createState, hasActiveTask, loadState, saveIterationLog, saveState } from '../lib/state.js';
 import { submitActiveTask } from '../lib/submit-task.js';
 import { buildInitialStepState, ensureTaskDirectory, loadAndValidateTask, moveTaskFileAtomically } from '../lib/tasks.js';
+import type { ArbiterResult, ReviewComment } from '../types/index.js';
+
+const POLL_INTERVAL_MS = 5_000;
+const POLL_TIMEOUT_MS = 10 * 60_000;
 
 export interface StartCommandOptions {
   dryRun?: boolean;
@@ -69,9 +72,6 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
     for (let i = 0; i < task.steps.length; i += 1) {
       const step = task.steps[i];
       const stepState = state.steps[i];
-      if (!step || !stepState) {
-        continue;
-      }
 
       if (stepState.status === 'done') {
         continue;
@@ -95,7 +95,6 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
 
       const serviceRoot = path.resolve(projectRoot, serviceCfg.path);
       const branch = git.getBranchName(task.id, step.service);
-      const previousStatus = stepState.status;
 
       if (!options.dryRun) {
         if (options.resume) {
@@ -115,41 +114,41 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
         saveState(projectRoot, state);
       }
 
-      if (!options.dryRun && (!options.resume || previousStatus === 'pending')) {
-        logger.info(`Running codex implementation for service ${step.service}`);
-        await codex.exec({
+      if (options.dryRun) {
+        logger.info(`[dry-run] Would run codex cloud implementation for service ${step.service}`);
+      } else {
+        const submissionSession = stepState.session_id ?? (await codex.submitTask(step.spec, {cwd: serviceRoot}));
+        stepState.session_id = submissionSession;
+        saveState(projectRoot, state);
+
+        const execution = await runCloudReviewLoop({
+          taskId: task.id,
+          service: step.service,
           spec: step.spec,
-          model: config.codex.model,
-          cwd: serviceRoot,
+          sessionId: submissionSession,
+          stepState,
+          projectRoot,
+          config,
+          claude,
           verbose: options.verbose,
         });
-      } else if (options.dryRun) {
-        logger.info(`[dry-run] Would run codex for service ${step.service}`);
+
+        stepState.lastReviewComments = execution.lastReviewComments;
+        stepState.lastArbiterResult = execution.lastArbiterResult;
+        stepState.iteration = execution.finalIteration;
+        stepState.session_id = execution.sessionId;
       }
 
-      logger.info(`Starting review loop for service ${step.service}`);
-      const result = await runReviewLoop({
-        taskId: task.id,
-        task,
-        step,
-        stepState,
-        projectRoot,
-        config,
-        claude,
-        dryRun: options.dryRun,
-        verbose: options.verbose,
-      });
-
-      if (result.decision === 'escalate') {
+      if (stepState.lastArbiterResult?.decision === 'escalate') {
         logger.escalation({
           taskId: task.id,
           service: step.service,
-          iteration: result.finalIteration,
+          iteration: stepState.iteration,
           spec: step.spec,
           diff: '',
-          reviewComments: result.lastReviewComments,
-          arbiterReasoning: result.lastArbiterResult.reasoning,
-          summary: result.lastArbiterResult.summary,
+          reviewComments: stepState.lastReviewComments ?? [],
+          arbiterReasoning: stepState.lastArbiterResult.reasoning,
+          summary: stepState.lastArbiterResult.summary,
         });
 
         stepState.status = 'escalated';
@@ -187,6 +186,113 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     fatalAndExit(message);
+  }
+}
+
+async function runCloudReviewLoop(opts: {
+  taskId: string;
+  service: string;
+  spec: string;
+  sessionId: string;
+  stepState: {iteration: number; session_id?: string};
+  projectRoot: string;
+  config: ReturnType<typeof loadConfig>;
+  claude: ClaudeClient;
+  verbose?: boolean;
+}): Promise<{sessionId: string; finalIteration: number; lastReviewComments: ReviewComment[]; lastArbiterResult: ArbiterResult}> {
+  let sessionId = opts.sessionId;
+  let iteration = opts.stepState.iteration;
+
+  for (;;) {
+    logger.iteration(iteration + 1, opts.config.review.max_iterations);
+
+    logger.info(`Polling codex cloud session ${sessionId}`);
+    const status = await codex.pollStatus(sessionId, {
+      intervalMs: POLL_INTERVAL_MS,
+      timeoutMs: POLL_TIMEOUT_MS,
+    });
+
+    if (status !== 'completed') {
+      return {
+        sessionId,
+        finalIteration: iteration,
+        lastReviewComments: [],
+        lastArbiterResult: {
+          decision: 'escalate',
+          reasoning: `Codex Cloud session ended with status '${status}'.`,
+          summary: 'Escalated due to codex cloud execution failure.',
+        },
+      };
+    }
+
+    logger.info(`Retrieving diff for session ${sessionId}`);
+    const diff = await codex.getDiff(sessionId);
+
+    logger.info(`Requesting reviewer analysis (model: ${opts.config.review.model})`);
+    const review = await opts.claude.runReviewer({
+      spec: opts.spec,
+      diff,
+      model: opts.config.review.model,
+    });
+    logger.reviewSummary(review.comments);
+
+    logger.info(`Requesting arbiter decision (model: ${opts.config.review.model})`);
+    const arbiter = await opts.claude.runArbiter({
+      spec: opts.spec,
+      diff,
+      reviewComments: review.comments,
+      model: opts.config.review.model,
+    });
+
+    saveIterationLog(opts.projectRoot, opts.taskId, opts.service, iteration, {
+      diff,
+      review,
+      arbiter,
+    });
+
+    opts.stepState.iteration = iteration;
+    opts.stepState.session_id = sessionId;
+
+    if (arbiter.decision === 'submit' || arbiter.decision === 'escalate') {
+      return {
+        sessionId,
+        finalIteration: iteration,
+        lastReviewComments: review.comments,
+        lastArbiterResult: arbiter,
+      };
+    }
+
+    if (iteration >= opts.config.review.max_iterations) {
+      return {
+        sessionId,
+        finalIteration: iteration,
+        lastReviewComments: review.comments,
+        lastArbiterResult: {
+          decision: 'escalate',
+          reasoning: 'Max review iterations reached while arbiter still requested fixes.',
+          summary: 'Escalated because maximum iterations were exhausted.',
+        },
+      };
+    }
+
+    if (!arbiter.feedback_for_codex) {
+      return {
+        sessionId,
+        finalIteration: iteration,
+        lastReviewComments: review.comments,
+        lastArbiterResult: {
+          decision: 'escalate',
+          reasoning: 'Arbiter returned fix decision without feedback_for_codex.',
+          summary: 'Escalated because fix instructions were missing.',
+        },
+      };
+    }
+
+    logger.info('Arbiter requested fixes, resuming codex cloud session');
+    sessionId = await codex.resumeTask(sessionId, arbiter.feedback_for_codex);
+    opts.stepState.session_id = sessionId;
+    iteration += 1;
+    opts.stepState.iteration = iteration;
   }
 }
 
