@@ -65,6 +65,7 @@ codex:
       services: [{ name: 'api', path: './services/api' }],
       review: { model: 'custom-review', max_iterations: 7, auto_submit: true },
       codex: { model: 'custom-codex' },
+      maxConcurrent: undefined,
     });
   });
 
@@ -87,6 +88,39 @@ services:
       auto_submit: false,
     });
     expect(result.codex).toEqual({ model: 'gpt-4o' });
+    expect(result.maxConcurrent).toBeUndefined();
+  });
+
+
+  it('parses maxConcurrent when provided', () => {
+    const root = makeTempDir();
+    writeConfig(
+      root,
+      `version: 1
+services:
+  - name: api
+    path: ./services/api
+maxConcurrent: 2
+`,
+    );
+
+    const result = loadConfig(root);
+    expect(result.maxConcurrent).toBe(2);
+  });
+
+  it('throws for invalid maxConcurrent', () => {
+    const root = makeTempDir();
+    writeConfig(
+      root,
+      `version: 1
+services:
+  - name: api
+    path: ./services/api
+maxConcurrent: 0
+`,
+    );
+
+    expect(() => loadConfig(root)).toThrowError('maxConcurrent must be a positive integer');
   });
 
   it('throws when config file is missing', () => {

@@ -46,6 +46,46 @@ function parseTaskStep(value: unknown, index: number, config: VexdoConfig): Task
   };
 }
 
+
+function validateDependencies(steps: TaskStep[]): void {
+  const byService = new Map(steps.map((step) => [step.service, step]));
+
+  for (const step of steps) {
+    for (const dep of step.depends_on ?? []) {
+      if (!byService.has(dep)) {
+        throw new Error(`step '${step.service}' depends on unknown service '${dep}'`);
+      }
+      if (dep === step.service) {
+        throw new Error(`step '${step.service}' cannot depend on itself`);
+      }
+    }
+  }
+
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+
+  const visit = (service: string): void => {
+    if (visited.has(service)) {
+      return;
+    }
+    if (visiting.has(service)) {
+      throw new Error(`Dependency cycle detected involving service '${service}'`);
+    }
+
+    visiting.add(service);
+    const step = byService.get(service);
+    for (const dep of step?.depends_on ?? []) {
+      visit(dep);
+    }
+    visiting.delete(service);
+    visited.add(service);
+  };
+
+  for (const step of steps) {
+    visit(step.service);
+  }
+}
+
 export function loadAndValidateTask(taskPath: string, config: VexdoConfig): Task {
   const raw = fs.readFileSync(taskPath, 'utf8');
 
@@ -69,6 +109,7 @@ export function loadAndValidateTask(taskPath: string, config: VexdoConfig): Task
   }
 
   const steps = parsed.steps.map((step, index) => parseTaskStep(step, index, config));
+  validateDependencies(steps);
 
   return { id, title, steps };
 }

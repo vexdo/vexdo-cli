@@ -6,6 +6,16 @@ import type { ReviewComment } from '../types/index.js';
 
 let verboseEnabled = false;
 
+export interface Logger {
+  info: (message: string) => void;
+  success: (message: string) => void;
+  warn: (message: string) => void;
+  error: (message: string) => void;
+  debug: (message: string) => void;
+  iteration: (n: number, max: number) => void;
+  reviewSummary: (comments: ReviewComment[]) => void;
+}
+
 function safeLog(method: 'log' | 'error', message: string): void {
   try {
     if (method === 'error') {
@@ -144,4 +154,60 @@ export function reviewSummary(comments: ReviewComment[]): void {
     const location = comment.file ? ` (${comment.file}${comment.line ? `:${String(comment.line)}` : ''})` : '';
     safeLog('log', `- ${comment.severity}${location}: ${comment.comment}`);
   }
+}
+
+function prefixed(prefix: string, message: string): string {
+  return `${prefix}  ${message}`;
+}
+
+export function withPrefix(prefix: string): Logger {
+  return {
+    info: (message: string) => {
+      info(prefixed(prefix, message));
+    },
+    success: (message: string) => {
+      success(prefixed(prefix, message));
+    },
+    warn: (message: string) => {
+      warn(prefixed(prefix, message));
+    },
+    error: (message: string) => {
+      error(prefixed(prefix, message));
+    },
+    debug: (message: string) => {
+      debug(prefixed(prefix, message));
+    },
+    iteration: (n: number, max: number) => {
+      safeLog('log', prefixed(prefix, pc.gray(`Iteration ${String(n)}/${String(max)}`)));
+    },
+    reviewSummary: (comments: ReviewComment[]) => {
+      const counts = {
+        critical: 0,
+        important: 0,
+        minor: 0,
+        noise: 0,
+      };
+
+      for (const comment of comments) {
+        counts[comment.severity] += 1;
+      }
+
+      safeLog(
+        'log',
+        prefixed(
+          prefix,
+          `${pc.bold('Review:')} ${String(counts.critical)} critical ${String(counts.important)} important ${String(counts.minor)} minor`,
+        ),
+      );
+
+      for (const comment of comments) {
+        if (comment.severity === 'noise') {
+          continue;
+        }
+
+        const location = comment.file ? ` (${comment.file}${comment.line ? `:${String(comment.line)}` : ''})` : '';
+        safeLog('log', prefixed(prefix, `- ${comment.severity}${location}: ${comment.comment}`));
+      }
+    },
+  };
 }

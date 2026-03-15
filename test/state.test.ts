@@ -104,24 +104,23 @@ describe('state', () => {
     expect(state.updatedAt).toBe(state.startedAt);
   });
 
-  it('updateStep is immutable', () => {
+  it('updateStep re-reads and persists merged state', async () => {
+    const root = makeTempDir();
     const original = createState('task-1', 'Task 1', '/tmp/task.yml', [
       { service: 'api', status: 'pending', iteration: 0 },
       { service: 'web', status: 'pending', iteration: 0 },
     ]);
 
-    const updated = updateStep(original, 'api', {
+    saveState(root, original);
+    await updateStep(root, 'task-1', 'api', {
       status: 'in_progress',
       iteration: 1,
     });
 
-    expect(updated).not.toBe(original);
-    expect(updated.steps).not.toBe(original.steps);
-    expect(updated.steps[0]).not.toBe(original.steps[0]);
-    expect(updated.steps[1]).toBe(original.steps[1]);
-    expect(original.steps[0]?.status).toBe('pending');
-    expect(updated.steps[0]?.status).toBe('in_progress');
-    expect(updated.steps[0]?.iteration).toBe(1);
+    const updated = loadState(root);
+    expect(updated?.steps[0]?.status).toBe('in_progress');
+    expect(updated?.steps[0]?.iteration).toBe(1);
+    expect(updated?.steps[1]?.status).toBe('pending');
   });
 
   it('saveIterationLog creates diff, review, and arbiter files', () => {

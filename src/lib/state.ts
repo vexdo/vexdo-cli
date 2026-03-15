@@ -52,6 +52,43 @@ export function saveState(projectRoot: string, state: VexdoState): void {
   fs.writeFileSync(getStatePath(projectRoot), JSON.stringify(nextState, null, 2) + '\n', 'utf8');
 }
 
+export async function updateStep(
+  projectRoot: string,
+  taskId: string,
+  service: string,
+  updates: Partial<Omit<StepState, 'service'>>,
+): Promise<void> {
+  const currentState = loadState(projectRoot);
+  if (!currentState) {
+    throw new Error('No active state found to update.');
+  }
+  if (currentState.taskId !== taskId) {
+    throw new Error(`State task mismatch. Expected '${taskId}', found '${currentState.taskId}'.`);
+  }
+
+  const nextState: VexdoState = {
+    ...currentState,
+    steps: currentState.steps.map((step) => {
+      if (step.service !== service) {
+        return step;
+      }
+      return {
+        ...step,
+        ...updates,
+      };
+    }),
+    updatedAt: nowIso(),
+  };
+
+  const stateDir = getStateDir(projectRoot);
+  fs.mkdirSync(stateDir, { recursive: true });
+
+  const statePath = getStatePath(projectRoot);
+  const tmpPath = `${statePath}.tmp`;
+  await fs.promises.writeFile(tmpPath, JSON.stringify(nextState, null, 2) + '\n', 'utf8');
+  await fs.promises.rename(tmpPath, statePath);
+}
+
 export function clearState(projectRoot: string): void {
   const statePath = getStatePath(projectRoot);
   if (fs.existsSync(statePath)) {
@@ -79,26 +116,6 @@ export function createState(
     steps: [...steps],
     startedAt: timestamp,
     updatedAt: timestamp,
-  };
-}
-
-export function updateStep(
-  state: VexdoState,
-  service: string,
-  updates: Partial<Omit<StepState, 'service'>>,
-): VexdoState {
-  return {
-    ...state,
-    steps: state.steps.map((step) => {
-      if (step.service !== service) {
-        return step;
-      }
-      return {
-        ...step,
-        ...updates,
-      };
-    }),
-    updatedAt: nowIso(),
   };
 }
 
