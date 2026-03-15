@@ -34,6 +34,7 @@ export interface VexdoConfig {
   services: ServiceConfig[];
   review: ReviewConfig;
   codex: CodexConfig;
+  maxConcurrent?: number;
 }
 
 export interface TaskStep {

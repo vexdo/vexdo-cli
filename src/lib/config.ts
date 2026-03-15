@@ -86,6 +86,19 @@ function parseReview(value: unknown): ReviewConfig {
   };
 }
 
+
+function parseMaxConcurrent(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    throw new Error('maxConcurrent must be a positive integer');
+  }
+
+  return value;
+}
+
 function parseCodex(value: unknown): CodexConfig {
   if (value === undefined) {
     return { model: DEFAULT_CODEX_MODEL };
@@ -147,11 +160,13 @@ export function loadConfig(projectRoot: string): VexdoConfig {
   const services = parseServices(readObjectField(parsed, 'services'));
   const review = parseReview(readObjectField(parsed, 'review'));
   const codex = parseCodex(readObjectField(parsed, 'codex'));
+  const maxConcurrent = parseMaxConcurrent(readObjectField(parsed, 'maxConcurrent'));
 
   return {
     version: 1,
     services,
     review,
     codex,
+    maxConcurrent,
   };
 }
