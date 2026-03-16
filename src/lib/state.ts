@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { ArbiterResult, ReviewResult, StepState, VexdoState } from '../types/index.js';
+import type { ArbiterResult, StepState, VexdoState } from '../types/index.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -124,12 +124,12 @@ export function saveIterationLog(
   taskId: string,
   service: string,
   iteration: number,
-  payload: { diff: string; review: ReviewResult; arbiter: ArbiterResult },
+  payload: { diff: string; review: string; arbiter: ArbiterResult },
 ): void {
   const logsDir = ensureLogsDir(projectRoot, taskId);
   const base = `${service}-iteration-${String(iteration)}`;
   fs.writeFileSync(path.join(logsDir, `${base}-diff.txt`), payload.diff, 'utf8');
-  fs.writeFileSync(path.join(logsDir, `${base}-review.json`), JSON.stringify(payload.review, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(path.join(logsDir, `${base}-review.txt`), payload.review, 'utf8');
   fs.writeFileSync(
     path.join(logsDir, `${base}-arbiter.json`),
     JSON.stringify(payload.arbiter, null, 2) + '\n',

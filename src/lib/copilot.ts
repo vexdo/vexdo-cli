@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 
 import type { CommentSeverity, CopilotErrorCode, ReviewComment } from '../types/index.js';
 
-const COPILOT_TIMEOUT_MS = 120_000;
+const COPILOT_TIMEOUT_MS = 5 * 60_000;
 
 interface CommandResult {
   stdout: string;
@@ -45,7 +45,10 @@ export class CopilotNotFoundError extends CopilotReviewError {
   }
 }
 
-function runCopilotCommand(args: string[], opts?: { cwd?: string; timeoutMs?: number }): Promise<CommandResult> {
+function runCopilotCommand(
+  args: string[],
+  opts?: { cwd?: string; timeoutMs?: number; onChunk?: (chunk: string) => void },
+): Promise<CommandResult> {
   return new Promise<CommandResult>((resolve, reject) => {
     const child = spawn('copilot', args, {
       cwd: opts?.cwd,
@@ -56,7 +59,9 @@ function runCopilotCommand(args: string[], opts?: { cwd?: string; timeoutMs?: nu
     let stderr = '';
 
     child.stdout.on('data', (chunk: Buffer | string) => {
-      stdout += chunk.toString();
+      const text = chunk.toString();
+      stdout += text;
+      opts?.onChunk?.(text);
     });
 
     child.stderr.on('data', (chunk: Buffer | string) => {
@@ -204,19 +209,53 @@ export async function checkCopilotAvailable(): Promise<void> {
   }
 }
 
-export async function runCopilotReview(spec: string, opts?: { cwd?: string }): Promise<ReviewComment[]> {
-  const prompt = `Review the staged changes against the following spec.\nReport bugs, missing requirements, security issues, and logic errors.\nIgnore style issues.\n\nSpec:\n${spec}`;
+export interface ReviewIteration {
+  review: string;
+  feedbackSentToCodex: string;
+}
+
+export async function runCopilotReview(
+  spec: string,
+  diff: string,
+  opts?: {
+    cwd?: string;
+    history?: ReviewIteration[];
+    onChunk?: (chunk: string) => void;
+    onRawOutput?: (stdout: string, stderr: string) => void;
+  },
+): Promise<string> {
+  const historySection =
+    opts?.history && opts.history.length > 0
+      ? '\n\n' +
+        opts.history
+          .map(
+            (h, i) =>
+              `PREVIOUS ITERATION ${String(i + 1)} REVIEW:\n${h.review}\n\nFEEDBACK SENT TO CODEX:\n${h.feedbackSentToCodex}`,
+          )
+          .join('\n\n') +
+        '\n\nPlease verify the above issues have been addressed in the new diff.'
+      : '';
+
+  const prompt =
+    `Review the following diff against the spec.\n` +
+    `Report bugs, missing requirements, security issues, and logic errors. Ignore style issues.\n\n` +
+    `SPEC:\n${spec}${historySection}\n\nDIFF:\n${diff}`;
 
   let result: CommandResult;
 
   try {
-    result = await runCopilotCommand(['-p', prompt, '--silent', '--output-format=json'], { cwd: opts?.cwd });
+    result = await runCopilotCommand(['-p', prompt, '--allow-all-tools', '--no-ask-user'], {
+      cwd: opts?.cwd,
+      onChunk: opts?.onChunk,
+    });
   } catch (error: unknown) {
     throw new CopilotReviewError(
       'review_failed',
       `Failed to execute copilot review: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+
+  opts?.onRawOutput?.(result.stdout, result.stderr);
 
   if (result.exitCode !== 0) {
     throw new CopilotReviewError('review_failed', 'Copilot review command failed.', result);
@@ -226,13 +265,5 @@ export async function runCopilotReview(spec: string, opts?: { cwd?: string }): P
     throw new CopilotReviewError('review_failed', 'Copilot review produced no output.', result);
   }
 
-  try {
-    return parseReviewComments(result.stdout);
-  } catch (error: unknown) {
-    throw new CopilotReviewError(
-      'parse_failed',
-      `Failed to parse Copilot review output: ${error instanceof Error ? error.message : String(error)}`,
-      result,
-    );
-  }
+  return result.stdout.trim();
 }

@@ -16,3 +16,15 @@ export async function requireCodexAvailable(): Promise<void> {
 export async function requireGhAvailable(): Promise<void> {
   await gh.checkGhAvailable();
 }
+
+export function resolveCodexEnvId(serviceName: string, configEnvId?: string): string {
+  const envVarName = `CODEX_ENV_ID_${serviceName.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
+  const envId = configEnvId ?? process.env[envVarName];
+  if (!envId) {
+    throw new Error(
+      `Codex environment ID is required for service "${serviceName}". ` +
+      `Set env_id under services.${serviceName} in .vexdo.yml or export ${envVarName}=<id>.`,
+    );
+  }
+  return envId;
+}

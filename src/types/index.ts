@@ -19,6 +19,7 @@ export type CodexErrorCode =
 export interface ServiceConfig {
   name: string;
   path: string;
+  env_id?: string;
 }
 
 export interface ReviewConfig {
@@ -29,6 +30,7 @@ export interface ReviewConfig {
 
 export interface CodexConfig {
   model: string;
+  base_branch: string;
 }
 
 export interface VexdoConfig {
@@ -76,7 +78,7 @@ export interface StepState {
   status: StepStatus;
   iteration: number;
   branch?: string;
-  lastReviewComments?: ReviewComment[];
+  lastReview?: string;
   lastArbiterResult?: ArbiterResult;
   session_id?: string;
 }
@@ -102,7 +104,7 @@ export interface IterationLog {
   service: string;
   iteration: number;
   diff: string;
-  review: ReviewResult;
+  review: string;
   arbiter: ArbiterResult;
   timestamp: string;
 }

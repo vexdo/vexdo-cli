@@ -19,7 +19,7 @@ export interface ReviewerOptions {
 export interface ArbiterOptions {
   spec: string;
   diff: string;
-  reviewComments: ReviewComment[];
+  reviewText: string;
   model: string;
   maxTokens?: number;
 }
@@ -77,7 +77,7 @@ export class ClaudeClient {
         messages: [
           {
             role: 'user',
-            content: `SPEC:\n${opts.spec}\n\nDIFF:\n${opts.diff}\n\nREVIEWER COMMENTS:\n${JSON.stringify(opts.reviewComments)}`,
+            content: `SPEC:\n${opts.spec}\n\nDIFF:\n${opts.diff}\n\nREVIEWER COMMENTS:\n${opts.reviewText}`,
           },
         ],
       });

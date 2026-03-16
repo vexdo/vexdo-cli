@@ -58,11 +58,17 @@ export async function branchExists(name: string, cwd: string): Promise<boolean> 
 /**
  * Create and checkout a new branch.
  */
-export async function createBranch(name: string, cwd: string): Promise<void> {
+export async function fetchBranch(branch: string, cwd: string): Promise<void> {
+  await exec(['fetch', 'origin', branch], cwd);
+}
+
+export async function createBranch(name: string, cwd: string, baseBranch?: string): Promise<void> {
   if (await branchExists(name, cwd)) {
     throw new GitError(['checkout', '-b', name], 128, `branch '${name}' already exists`);
   }
-  await exec(['checkout', '-b', name], cwd);
+  const base = baseBranch ? `origin/${baseBranch}` : undefined;
+  const args = base ? ['checkout', '-b', name, base] : ['checkout', '-b', name];
+  await exec(args, cwd);
 }
 
 /**
@@ -109,6 +115,21 @@ export async function stageAll(cwd: string): Promise<void> {
  */
 export async function commit(message: string, cwd: string): Promise<void> {
   await exec(['commit', '-m', message], cwd);
+}
+
+/**
+ * Stage all changes and commit.
+ */
+export async function commitAll(message: string, cwd: string): Promise<void> {
+  await exec(['add', '-A'], cwd);
+  await exec(['commit', '-m', message], cwd);
+}
+
+/**
+ * Push branch to origin.
+ */
+export async function push(branch: string, cwd: string): Promise<void> {
+  await exec(['push', '--set-upstream', 'origin', branch], cwd);
 }
 
 /**

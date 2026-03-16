@@ -8,6 +8,7 @@ const DEFAULT_REVIEW_MODEL = 'claude-haiku-4-5-20251001';
 const DEFAULT_MAX_ITERATIONS = 3;
 const DEFAULT_AUTO_SUBMIT = false;
 const DEFAULT_CODEX_MODEL = 'gpt-4o';
+const DEFAULT_CODEX_BASE_BRANCH = 'main';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -37,9 +38,13 @@ function parseServices(value: unknown): ServiceConfig[] {
     const name = requireString(readObjectField(service, 'name'), `services[${String(index)}].name`);
     const servicePath = requireString(readObjectField(service, 'path'), `services[${String(index)}].path`);
 
+    const envIdRaw = readObjectField(service, 'env_id');
+    const env_id = envIdRaw === undefined ? undefined : requireString(envIdRaw, `services[${String(index)}].env_id`);
+
     return {
       name,
       path: servicePath,
+      env_id,
     };
   });
 }
@@ -101,7 +106,7 @@ function parseMaxConcurrent(value: unknown): number | undefined {
 
 function parseCodex(value: unknown): CodexConfig {
   if (value === undefined) {
-    return { model: DEFAULT_CODEX_MODEL };
+    return { model: DEFAULT_CODEX_MODEL, base_branch: DEFAULT_CODEX_BASE_BRANCH };
   }
 
   if (!isRecord(value)) {
@@ -110,7 +115,11 @@ function parseCodex(value: unknown): CodexConfig {
 
   const modelRaw = readObjectField(value, 'model');
   const model = modelRaw === undefined ? DEFAULT_CODEX_MODEL : requireString(modelRaw, 'codex.model');
-  return { model };
+
+  const baseBranchRaw = readObjectField(value, 'base_branch');
+  const base_branch = baseBranchRaw === undefined ? DEFAULT_CODEX_BASE_BRANCH : requireString(baseBranchRaw, 'codex.base_branch');
+
+  return { model, base_branch };
 }
 
 export function findProjectRoot(startDir: string = process.cwd()): string | null {

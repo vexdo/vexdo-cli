@@ -2,7 +2,6 @@ import ora from 'ora';
 import type { Ora } from 'ora';
 import pc from 'picocolors';
 
-import type { ReviewComment } from '../types/index.js';
 
 let verboseEnabled = false;
 
@@ -88,7 +87,7 @@ export function escalation(context: {
   iteration: number;
   spec: string;
   diff: string;
-  reviewComments: ReviewComment[];
+  reviewText: string;
   arbiterReasoning: string;
   summary: string;
 }): void {
@@ -105,26 +104,14 @@ export function escalation(context: {
     pc.bold('Arbiter reasoning:'),
     context.arbiterReasoning,
     '',
-    pc.bold('Review comments:'),
+    pc.bold('Review:'),
+    context.reviewText,
+    '',
+    pc.bold('Diff:'),
+    context.diff,
+    '',
+    pc.gray('Hint: run `vexdo abort` to clear state.'),
   ];
-
-  for (const comment of context.reviewComments) {
-    const sevColor =
-      comment.severity === 'critical'
-        ? pc.red
-        : comment.severity === 'important'
-          ? pc.yellow
-          : comment.severity === 'minor'
-            ? pc.cyan
-            : pc.gray;
-    const location = comment.file ? ` (${comment.file}${comment.line ? `:${String(comment.line)}` : ''})` : '';
-    lines.push(`- ${sevColor(comment.severity.toUpperCase())}${location}: ${comment.comment}`);
-    if (comment.suggestion) {
-      lines.push(`  ${pc.gray(`Suggestion: ${comment.suggestion}`)}`);
-    }
-  }
-
-  lines.push('', pc.bold('Diff:'), context.diff, '', pc.gray('Hint: run `vexdo abort` to clear state.'));
 
   safeLog('error', lines.join('\n'));
 }

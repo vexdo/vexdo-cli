@@ -102,9 +102,16 @@ function runCodexCommand(args: string[], opts?: {cwd?: string; timeoutMs?: numbe
 }
 
 function parseSessionId(output: string): string | null {
-  const match = /session[_-]?id\s*[:=]\s*([A-Za-z0-9._-]+)/i.exec(output);
-  if (match?.[1]) {
-    return match[1];
+  // session_id: <value> or sessionId=<value>
+  const kvMatch = /session[_-]?id\s*[:=]\s*([A-Za-z0-9._-]+)/i.exec(output);
+  if (kvMatch?.[1]) {
+    return kvMatch[1];
+  }
+
+  // https://.../codex/tasks/<task_id>
+  const urlMatch = /\/codex\/tasks\/([A-Za-z0-9._-]+)/i.exec(output);
+  if (urlMatch?.[1]) {
+    return urlMatch[1];
   }
 
   for (const line of output.split(/\r?\n/)) {
@@ -126,13 +133,26 @@ function parseSessionId(output: string): string | null {
   return null;
 }
 
-function parseStatus(output: string): CodexTaskStatus | null {
-  const match = /\b(completed|failed)\b/i.exec(output);
-  if (!match?.[1]) {
+type CodexPollStatus = CodexTaskStatus | 'pending';
+
+function parseStatus(output: string): CodexPollStatus | null {
+  const bracketMatch = /\[(COMPLETED|READY|FAILED|PENDING|RUNNING|IN_PROGRESS)\]/i.exec(output);
+  if (bracketMatch?.[1]) {
+    const s = bracketMatch[1].toLowerCase();
+    if (s === 'completed' || s === 'ready') return 'completed';
+    if (s === 'failed') return 'failed';
+    return 'pending';
+  }
+
+  const wordMatch = /\b(completed|ready|failed|pending|running)\b/i.exec(output);
+  if (!wordMatch?.[1]) {
     return null;
   }
 
-  return match[1].toLowerCase() as CodexTaskStatus;
+  const s = wordMatch[1].toLowerCase();
+  if (s === 'completed' || s === 'ready') return 'completed';
+  if (s === 'failed') return 'failed';
+  return 'pending';
 }
 
 export async function checkCodexAvailable(): Promise<void> {
@@ -146,11 +166,12 @@ export async function checkCodexAvailable(): Promise<void> {
   }
 }
 
-export async function submitTask(prompt: string, options?: {cwd?: string}): Promise<string> {
-  const args = ['cloud', 'exec', prompt];
-  if (options?.cwd) {
-    args.push('-C', options.cwd);
+export async function submitTask(prompt: string, options?: {cwd?: string; envId?: string; branch?: string}): Promise<string> {
+  const args = ['cloud', 'exec', '--env', options?.envId ?? ''];
+  if (options?.branch) {
+    args.push('--branch', options.branch);
   }
+  args.push(prompt);
 
   const result = await runCodexCommand(args, {cwd: options?.cwd});
   const sessionId = parseSessionId(result.stdout);
@@ -162,15 +183,21 @@ export async function submitTask(prompt: string, options?: {cwd?: string}): Prom
   return sessionId;
 }
 
-export async function resumeTask(sessionId: string, feedback: string): Promise<string> {
-  const result = await runCodexCommand(['cloud', 'exec', 'resume', sessionId, feedback]);
-  const nextSessionId = parseSessionId(result.stdout);
+export async function resumeTask(
+  spec: string,
+  feedback: string,
+  options?: {cwd?: string; envId?: string; branch?: string; taskTitle?: string; iteration?: number},
+): Promise<string> {
+  const header = [
+    `[REVIEW FEEDBACK — FIX REQUESTED]`,
+    options?.taskTitle ? `Task: ${options.taskTitle}` : null,
+    options?.iteration !== undefined ? `Iteration: ${String(options.iteration)}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
 
-  if (result.exitCode !== 0 || !nextSessionId) {
-    throw new CodexError('resume_failed', `Failed to resume codex cloud session ${sessionId}.`, result);
-  }
-
-  return nextSessionId;
+  const prompt = `${header}\n\n${spec}\n\nIssues to fix:\n${feedback}`;
+  return submitTask(prompt, options);
 }
 
 export async function pollStatus(sessionId: string, opts: {intervalMs: number; timeoutMs: number}): Promise<CodexTaskStatus> {
@@ -179,11 +206,12 @@ export async function pollStatus(sessionId: string, opts: {intervalMs: number; t
   for (;;) {
     const result = await runCodexCommand(['cloud', 'status', sessionId]);
 
-    if (result.exitCode !== 0) {
+    const status = parseStatus(result.stdout);
+
+    if (result.exitCode !== 0 && status === null) {
       throw new CodexError('poll_failed', `Failed to poll codex cloud status for session ${sessionId}.`, result);
     }
 
-    const status = parseStatus(result.stdout);
     if (status === 'completed' || status === 'failed') {
       return status;
     }
@@ -198,8 +226,8 @@ export async function pollStatus(sessionId: string, opts: {intervalMs: number; t
   }
 }
 
-export async function getDiff(sessionId: string): Promise<string> {
-  const result = await runCodexCommand(['cloud', 'diff', sessionId]);
+export async function getDiff(sessionId: string, options?: {cwd?: string}): Promise<string> {
+  const result = await runCodexCommand(['cloud', 'diff', sessionId], {cwd: options?.cwd});
   if (result.exitCode !== 0) {
     throw new CodexError('poll_failed', `Failed to get diff for codex cloud session ${sessionId}.`, result);
   }
@@ -211,8 +239,8 @@ export async function getDiff(sessionId: string): Promise<string> {
   return result.stdout;
 }
 
-export async function applyDiff(sessionId: string): Promise<void> {
-  const result = await runCodexCommand(['cloud', 'apply', sessionId]);
+export async function applyDiff(sessionId: string, options?: {cwd?: string}): Promise<void> {
+  const result = await runCodexCommand(['cloud', 'apply', sessionId], {cwd: options?.cwd});
   if (result.exitCode !== 0) {
     throw new CodexError('apply_failed', `Failed to apply diff for codex cloud session ${sessionId}.`, result);
   }
