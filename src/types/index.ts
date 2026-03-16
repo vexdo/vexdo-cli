@@ -6,6 +6,8 @@ export type StepStatus = 'pending' | 'in_progress' | 'done' | 'failed' | 'escala
 
 export type TaskStatus = 'in_progress' | 'review' | 'done' | 'blocked' | 'escalated';
 
+
+export type CopilotErrorCode = 'not_found' | 'review_failed' | 'parse_failed';
 export type CodexErrorCode =
   | 'submit_failed'
   | 'resume_failed'

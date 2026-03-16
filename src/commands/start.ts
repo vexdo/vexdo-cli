@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Command } from 'commander';
 
 import { ClaudeClient } from '../lib/claude.js';
+import { checkCopilotAvailable, runCopilotReview } from '../lib/copilot.js';
 import * as codex from '../lib/codex.js';
 import { findProjectRoot, loadConfig } from '../lib/config.js';
 import * as git from '../lib/git.js';
@@ -46,6 +47,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
     if (!options.dryRun) {
       requireAnthropicApiKey();
       await codex.checkCodexAvailable();
+      await checkCopilotAvailable();
     }
 
     let state = loadState(projectRoot);
@@ -134,6 +136,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
             claude,
             verbose: options.verbose,
             log: scopedLogger,
+            serviceRoot,
           });
 
           await updateStep(projectRoot, task.id, step.service, {
@@ -227,6 +230,7 @@ async function runCloudReviewLoop(opts: {
   claude: ClaudeClient;
   verbose?: boolean;
   log: logger.Logger;
+  serviceRoot: string;
 }): Promise<{ sessionId: string; finalIteration: number; lastReviewComments: ReviewComment[]; lastArbiterResult: ArbiterResult }> {
   let sessionId = opts.sessionId;
   let iteration = opts.stepState.iteration;
@@ -258,11 +262,13 @@ async function runCloudReviewLoop(opts: {
     const diff = await codex.getDiff(sessionId);
 
     opts.log.info(`Running review (iteration ${String(iteration + 1)})...`);
-    const review = await opts.claude.runReviewer({
-      spec: opts.spec,
-      diff,
-      model: opts.config.review.model,
+
+    await codex.applyDiff(sessionId);
+    const comments = await runCopilotReview(opts.spec, { cwd: opts.serviceRoot }).finally(async () => {
+      await git.exec(['checkout', '.'], opts.serviceRoot);
     });
+
+    const review = { comments };
     opts.log.reviewSummary(review.comments);
 
     opts.log.info(`Requesting arbiter decision (model: ${opts.config.review.model})`);

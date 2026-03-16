@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import * as codex from './codex.js';
 import type { ClaudeClient } from './claude.js';
+import { runCopilotReview } from './copilot.js';
 import * as git from './git.js';
 import * as logger from './logger.js';
 import * as state from './state.js';
@@ -89,19 +90,14 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
           logger.info(`Waiting for reviewer response (${formatElapsed(reviewerStartedAt)})`);
         }, 15_000)
       : null;
-    const review = await opts.claude
-      .runReviewer({
-        spec: opts.step.spec,
-        diff,
-        model: opts.config.review.model,
-      })
-      .finally(() => {
+    const comments = await runCopilotReview(opts.step.spec, { cwd: serviceRoot }).finally(() => {
         if (reviewerHeartbeat) {
           clearInterval(reviewerHeartbeat);
         }
       });
     logger.info(`Reviewer response received in ${formatElapsed(reviewerStartedAt)}`);
 
+    const review = { comments };
     logger.reviewSummary(review.comments);
 
     logger.info(`Requesting arbiter decision (model: ${opts.config.review.model})`);
