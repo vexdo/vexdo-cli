@@ -9,7 +9,17 @@
     "skipLibCheck": true,
     "rootDir": ".",
     "outDir": "dist",
-    "types": ["node", "vitest/globals"]
+    "types": [
+      "node",
+      "vitest/globals"
+    ],
+    "jsx": "react-jsx"
   },
-  "include": ["src", "test", "tests", "tsup.config.ts", "vitest.config.ts"]
+  "include": [
+    "src",
+    "test",
+    "tests",
+    "tsup.config.ts",
+    "vitest.config.ts"
+  ]
 }

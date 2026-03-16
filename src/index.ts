@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Command } from 'commander';
 
 import { registerAbortCommand } from './commands/abort.js';
+import { registerBoardCommand } from './commands/board.js';
 import { registerFixCommand } from './commands/fix.js';
 import { registerInitCommand } from './commands/init.js';
 import { registerLogsCommand } from './commands/logs.js';
@@ -38,5 +39,6 @@ registerSubmitCommand(program);
 registerStatusCommand(program);
 registerAbortCommand(program);
 registerLogsCommand(program);
+registerBoardCommand(program);
 
 program.parse(process.argv);
