@@ -9,13 +9,17 @@ const mocks = vi.hoisted(() => ({
   submitTask: vi.fn(),
   pollStatus: vi.fn(),
   getDiff: vi.fn(),
+  applyDiff: vi.fn(),
   resumeTask: vi.fn(),
   createBranch: vi.fn(),
   checkoutBranch: vi.fn(),
+  gitExec: vi.fn(),
   getBranchName: vi.fn((taskId: string, service: string) => `vexdo/${taskId}/${service}`),
   checkGhAvailable: vi.fn(),
   createPr: vi.fn(),
   ClaudeClient: vi.fn(),
+  checkCopilotAvailable: vi.fn(),
+  runCopilotReview: vi.fn(),
 }));
 
 vi.mock('../../src/lib/codex.js', () => ({
@@ -23,12 +27,18 @@ vi.mock('../../src/lib/codex.js', () => ({
   submitTask: mocks.submitTask,
   pollStatus: mocks.pollStatus,
   getDiff: mocks.getDiff,
+  applyDiff: mocks.applyDiff,
   resumeTask: mocks.resumeTask,
 }));
 vi.mock('../../src/lib/git.js', () => ({
   createBranch: mocks.createBranch,
   checkoutBranch: mocks.checkoutBranch,
   getBranchName: mocks.getBranchName,
+  exec: mocks.gitExec,
+}));
+vi.mock('../../src/lib/copilot.js', () => ({
+  checkCopilotAvailable: mocks.checkCopilotAvailable,
+  runCopilotReview: mocks.runCopilotReview,
 }));
 vi.mock('../../src/lib/gh.js', () => ({
   checkGhAvailable: mocks.checkGhAvailable,
@@ -76,13 +86,16 @@ beforeEach(() => {
   }
 
   mocks.getBranchName.mockImplementation((taskId: string, service: string) => `vexdo/${taskId}/${service}`);
+  mocks.gitExec.mockResolvedValue('');
   mocks.submitTask.mockResolvedValue('sess-1');
   mocks.pollStatus.mockResolvedValue('completed');
   mocks.getDiff.mockResolvedValue('diff --git a/x b/x');
+  mocks.applyDiff.mockResolvedValue(undefined);
   mocks.resumeTask.mockResolvedValue('sess-2');
+  mocks.checkCopilotAvailable.mockResolvedValue(undefined);
+  mocks.runCopilotReview.mockResolvedValue([]);
 
   mocks.ClaudeClient.mockImplementation(() => ({
-    runReviewer: vi.fn().mockResolvedValue({comments: []}),
     runArbiter: vi.fn().mockResolvedValue({decision: 'submit', reasoning: 'ok', summary: 'ok'}),
   }));
 });
@@ -119,7 +132,6 @@ describe('start integration', () => {
     process.chdir(root);
 
     mocks.ClaudeClient.mockImplementation(() => ({
-      runReviewer: vi.fn().mockResolvedValue({comments: []}),
       runArbiter: vi
         .fn()
         .mockResolvedValueOnce({decision: 'fix', reasoning: 'x', summary: 'x', feedback_for_codex: 'please fix'})
