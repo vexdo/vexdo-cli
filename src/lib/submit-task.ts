@@ -19,11 +19,15 @@ export async function submitActiveTask(projectRoot: string, config: VexdoConfig,
     }
 
     const servicePath = path.resolve(projectRoot, service.path);
+    if (!step.branch) {
+      throw new Error(`No branch found in state for service ${step.service}. Cannot create PR.`);
+    }
     const body = `Task: ${state.taskId}\nService: ${step.service}`;
     const url = await gh.createPr({
       title: `${state.taskTitle} [${step.service}]`,
       body,
-      base: 'main',
+      head: step.branch,
+      base: config.codex.base_branch,
       cwd: servicePath,
     });
 

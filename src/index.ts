@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { Command } from 'commander';
 
@@ -14,7 +15,7 @@ import { registerStatusCommand } from './commands/status.js';
 import { registerSubmitCommand } from './commands/submit.js';
 import * as logger from './lib/logger.js';
 
-const packageJsonPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'package.json');
+const packageJsonPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as { version: string };
 
 const program = new Command();

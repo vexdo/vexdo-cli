@@ -6,6 +6,7 @@ const GIT_TIMEOUT_MS = 30_000;
 export interface CreatePrOptions {
   title: string;
   body: string;
+  head: string;
   base?: string;
   cwd: string;
 }
@@ -80,16 +81,11 @@ export async function checkGhAvailable(): Promise<void> {
  */
 export async function createPr(opts: CreatePrOptions): Promise<string> {
   const base = opts.base ?? 'main';
-  try {
-    await pushCurrentBranch(opts.cwd);
-  } catch (error: unknown) {
-    throw new Error(`Failed to push current branch before creating PR: ${error instanceof Error ? error.message : String(error)}`);
-  }
 
   return await new Promise<string>((resolve, reject) => {
     execFileCb(
       'gh',
-      ['pr', 'create', '--title', opts.title, '--body', opts.body, '--base', base],
+      ['pr', 'create', '--title', opts.title, '--body', opts.body, '--base', base, '--head', opts.head],
       {cwd: opts.cwd, timeout: GH_TIMEOUT_MS, encoding: 'utf8'},
       (error, stdout, stderr) => {
         if (error) {

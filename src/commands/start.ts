@@ -282,7 +282,8 @@ async function runCloudReviewLoop(opts: {
     const changedFiles = diff
       .split('\n')
       .filter((line) => line.startsWith('diff --git '))
-      .map((line) => line.replace(/^diff --git a\/\S+ b\//, ''));
+      .map((line) => line.replace(/^diff --git a\/\S+ b\//, ''))
+      .filter((f) => f.length > 0);
     opts.log.info(`Changed files (${String(changedFiles.length)}): ${changedFiles.join(', ')}`);
     opts.log.debug(diff);
 
@@ -328,7 +329,7 @@ async function runCloudReviewLoop(opts: {
     // Apply, commit and push for both submit and fix — branch is now up to date
     opts.log.info(`Applying diff and pushing to ${opts.branch}...`);
     await codex.applyDiff(sessionId, {cwd: opts.serviceRoot});
-    await git.commitAll(`vexdo: iteration ${String(iteration + 1)}`, opts.serviceRoot);
+    await git.commitFiles(changedFiles, `vexdo: iteration ${String(iteration + 1)}`, opts.serviceRoot);
     await git.push(opts.branch, opts.serviceRoot);
 
     if (arbiter.decision === 'submit') {

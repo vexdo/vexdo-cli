@@ -118,10 +118,10 @@ export async function commit(message: string, cwd: string): Promise<void> {
 }
 
 /**
- * Stage all changes and commit.
+ * Stage specific files and commit.
  */
-export async function commitAll(message: string, cwd: string): Promise<void> {
-  await exec(['add', '-A'], cwd);
+export async function commitFiles(files: string[], message: string, cwd: string): Promise<void> {
+  await exec(['add', '--', ...files], cwd);
   await exec(['commit', '-m', message], cwd);
 }
 

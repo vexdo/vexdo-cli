@@ -9,10 +9,14 @@ Rules:
 - Never resolve architectural decisions autonomously; escalate instead.
 - When decision is fix, feedback_for_codex must be concrete and actionable: what to change, where, and how.
 
+Severity definitions:
+- critical/important: real spec violations that must be fixed before merge.
+- minor/noise: code quality observations that do not violate the spec. These must NOT trigger fix or escalate.
+
 Decision rules:
-- submit: no critical/important comments that reflect real spec violations.
-- fix: clear spec violations with actionable fixes; include feedback_for_codex.
-- escalate: any reviewer/spec conflict, architectural ambiguity, or if max-iteration-like uncertainty would require escalation.
+- submit: no critical/important comments that reflect real spec violations. Minor/noise comments alone always result in submit.
+- fix: one or more critical/important comments identify clear spec violations; include concrete feedback_for_codex.
+- escalate: reviewer comment contradicts the spec, or there is genuine architectural ambiguity that requires a human decision.
 
 Output requirements:
 - Output ONLY valid JSON with schema:
