@@ -3,9 +3,9 @@
 Automated implementation + review loop for multi-service tasks, powered by Codex and Claude.
 
 ![CI](https://github.com/vexdo/vexdo-cli/actions/workflows/ci.yml/badge.svg)
-![npm](https://img.shields.io/npm/v/vexdo)
-![license](https://img.shields.io/npm/l/vexdo)
-![node](https://img.shields.io/node/v/vexdo)
+![npm](https://img.shields.io/npm/v/@vexdo/cli)
+![license](https://img.shields.io/npm/l/@vexdo/cli)
+![node](https://img.shields.io/node/v/@vexdo/cli)
 
 ## 1) What is vexdo
 
