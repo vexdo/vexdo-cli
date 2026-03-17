@@ -93,6 +93,7 @@ export async function runInit(projectRoot: string, prompt: PromptFn = defaultPro
   const maxIterationsRaw = await prompt(`Max review iterations (default: ${String(DEFAULT_MAX_ITERATIONS)}): `);
   const autoSubmitRaw = await prompt('Auto-submit PRs? (y/N): ');
   const codexModelRaw = await prompt(`Codex model (default: ${DEFAULT_CODEX_MODEL}): `);
+  const baseBranchRaw = await prompt('Base branch (default: main): ');
 
   const config: VexdoConfig = {
     version: 1,
@@ -104,6 +105,7 @@ export async function runInit(projectRoot: string, prompt: PromptFn = defaultPro
     },
     codex: {
       model: codexModelRaw.trim() || DEFAULT_CODEX_MODEL,
+      base_branch: baseBranchRaw.trim() || 'main',
     },
   };
 

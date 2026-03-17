@@ -64,31 +64,26 @@ describe('checkCopilotAvailable', () => {
 });
 
 describe('runCopilotReview', () => {
-  it('maps severity and location fields from JSONL output', async () => {
+  it('returns raw stdout text from copilot', async () => {
     mockSpawnRun('{"message":"Null dereference","severity":"high","file":"src/a.ts","line":13}\n');
 
-    await expect(runCopilotReview('spec', { cwd: '/repo' })).resolves.toEqual([
-      {
-        severity: 'critical',
-        file: 'src/a.ts',
-        line: 13,
-        comment: 'Null dereference',
-      },
-    ]);
+    await expect(runCopilotReview('spec', 'diff', { cwd: '/repo' })).resolves.toBe(
+      '{"message":"Null dereference","severity":"high","file":"src/a.ts","line":13}',
+    );
   });
 
-  it('returns [] when output has no parseable comments and command succeeds', async () => {
+  it('returns raw output when copilot succeeds', async () => {
     mockSpawnRun('{"event":"done"}\nnot-json\n');
-    await expect(runCopilotReview('spec')).resolves.toEqual([]);
+    await expect(runCopilotReview('spec', 'diff')).resolves.toBe('{"event":"done"}\nnot-json');
   });
 
   it('throws CopilotReviewError when command fails', async () => {
     mockSpawnRun('oops', 'broken', 1);
-    await expect(runCopilotReview('spec')).rejects.toBeInstanceOf(CopilotReviewError);
+    await expect(runCopilotReview('spec', 'diff')).rejects.toBeInstanceOf(CopilotReviewError);
   });
 
   it('throws CopilotReviewError when stdout is empty', async () => {
     mockSpawnRun(' \n');
-    await expect(runCopilotReview('spec')).rejects.toBeInstanceOf(CopilotReviewError);
+    await expect(runCopilotReview('spec', 'diff')).rejects.toBeInstanceOf(CopilotReviewError);
   });
 });

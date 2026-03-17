@@ -52,7 +52,7 @@ describe('gh helpers', () => {
       cb(null, 'https://github.com/org/repo/pull/1\n', '');
     });
 
-    await expect(createPr({ title: 't', body: 'b', cwd: '/repo' })).resolves.toBe(
+    await expect(createPr({ title: 't', body: 'b', head: 'feature', cwd: '/repo' })).resolves.toBe(
       'https://github.com/org/repo/pull/1',
     );
   });
@@ -71,7 +71,7 @@ describe('gh helpers', () => {
       cb(null, 'https://github.com/org/repo/pull/3\n', '');
     });
 
-    await expect(createPr({ title: 't', body: 'b', cwd: '/repo' })).resolves.toBe(
+    await expect(createPr({ title: 't', body: 'b', head: 'feature', cwd: '/repo' })).resolves.toBe(
       'https://github.com/org/repo/pull/3',
     );
     expect(execFileMock).toHaveBeenCalledWith(
@@ -96,7 +96,7 @@ describe('gh helpers', () => {
       cb(null, 'https://github.com/org/repo/pull/4\n', '');
     });
 
-    await expect(createPr({ title: 't', body: 'b', cwd: '/repo' })).rejects.toThrow(
+    await expect(createPr({ title: 't', body: 'b', head: 'feature', cwd: '/repo' })).rejects.toThrow(
       'Failed to push current branch before creating PR',
     );
   });

@@ -128,9 +128,7 @@ describe('state', () => {
 
     saveIterationLog(root, 'task-1', 'api', 2, {
       diff: 'diff content',
-      review: {
-        comments: [{ severity: 'important', comment: 'Needs work' }],
-      },
+      review: 'important: Needs work',
       arbiter: {
         decision: 'fix',
         reasoning: 'Please address comments',
@@ -140,7 +138,7 @@ describe('state', () => {
 
     const logsDir = path.join(root, '.vexdo', 'logs', 'task-1');
     expect(fs.existsSync(path.join(logsDir, 'api-iteration-2-diff.txt'))).toBe(true);
-    expect(fs.existsSync(path.join(logsDir, 'api-iteration-2-review.json'))).toBe(true);
+    expect(fs.existsSync(path.join(logsDir, 'api-iteration-2-review.txt'))).toBe(true);
     expect(fs.existsSync(path.join(logsDir, 'api-iteration-2-arbiter.json'))).toBe(true);
   });
 });

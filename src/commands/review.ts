@@ -69,7 +69,7 @@ export async function runReview(options: ReviewOptions): Promise<void> {
         iteration: result.finalIteration,
         spec: step.spec,
         diff: '',
-        reviewComments: result.lastReviewComments,
+        reviewText: result.lastReview,
         arbiterReasoning: result.lastArbiterResult.reasoning,
         summary: result.lastArbiterResult.summary,
       });

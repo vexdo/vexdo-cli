@@ -33,7 +33,7 @@ vi.mock('../../src/lib/logger.js', () => ({
 }));
 
 import { runReviewLoop } from '../../src/lib/review-loop.js';
-import type { ArbiterResult, ReviewResult, StepState, Task, TaskStep, VexdoConfig } from '../../src/types/index.js';
+import type { ArbiterResult, StepState, Task, TaskStep, VexdoConfig } from '../../src/types/index.js';
 
 describe('runReviewLoop', () => {
   const task: Task = { id: 't1', title: 'Task', steps: [] };
@@ -42,7 +42,7 @@ describe('runReviewLoop', () => {
     version: 1,
     services: [{ name: 'svc', path: '.' }],
     review: { model: 'claude-sonnet', max_iterations: 2, auto_submit: false },
-    codex: { model: 'gpt-5' },
+    codex: { model: 'gpt-5', base_branch: 'main' },
   };
   let stepState: StepState;
 
@@ -82,8 +82,8 @@ describe('runReviewLoop', () => {
 
   it('submit decision returns correct ReviewLoopResult', async () => {
     getDiffMock.mockResolvedValue('diff');
-    const review: ReviewResult = { comments: [{ severity: 'minor', comment: 'small' }] };
-    runCopilotReviewMock.mockResolvedValue(review.comments);
+    const reviewText = 'minor: small';
+    runCopilotReviewMock.mockResolvedValue(reviewText);
     const arbiter: ArbiterResult = { decision: 'submit', reasoning: 'ok', summary: 'ok' };
     const claude = {
       runArbiter: vi.fn().mockResolvedValue(arbiter),
@@ -102,7 +102,7 @@ describe('runReviewLoop', () => {
     expect(result).toEqual({
       decision: 'submit',
       finalIteration: 0,
-      lastReviewComments: review.comments,
+      lastReview: reviewText,
       lastArbiterResult: arbiter,
     });
     expect(saveIterationLogMock).toHaveBeenCalledTimes(1);
@@ -110,8 +110,7 @@ describe('runReviewLoop', () => {
 
   it('escalate decision returns correct ReviewLoopResult', async () => {
     getDiffMock.mockResolvedValue('diff');
-    const review: ReviewResult = { comments: [{ severity: 'critical', comment: 'broken' }] };
-    runCopilotReviewMock.mockResolvedValue(review.comments);
+    runCopilotReviewMock.mockResolvedValue('critical: broken');
     const arbiter: ArbiterResult = { decision: 'escalate', reasoning: 'conflict', summary: 'escalate' };
     const claude = {
       runArbiter: vi.fn().mockResolvedValue(arbiter),
@@ -125,7 +124,7 @@ describe('runReviewLoop', () => {
 
   it('fix decision calls codex then loops', async () => {
     getDiffMock.mockResolvedValueOnce('diff-1').mockResolvedValueOnce('diff-2');
-    runCopilotReviewMock.mockResolvedValueOnce([{ severity: 'important', comment: 'fix me' }]).mockResolvedValueOnce([]);
+    runCopilotReviewMock.mockResolvedValueOnce('important: fix me').mockResolvedValueOnce('no issues');
     const claude = {
       runArbiter: vi
         .fn()
@@ -143,7 +142,7 @@ describe('runReviewLoop', () => {
   it('After max_iterations with fix: escalates', async () => {
     stepState.iteration = 2;
     getDiffMock.mockResolvedValue('diff');
-    runCopilotReviewMock.mockResolvedValue([{ severity: 'important', comment: 'still bad' }]);
+    runCopilotReviewMock.mockResolvedValue('important: still bad');
     const claude = {
       runArbiter: vi.fn().mockResolvedValue({ decision: 'fix', reasoning: 'still broken', summary: 'fix again', feedback_for_codex: 'more' }),
     };
@@ -180,9 +179,9 @@ describe('runReviewLoop', () => {
   it('Iteration logs are saved on each iteration', async () => {
     getDiffMock.mockResolvedValueOnce('d1').mockResolvedValueOnce('d2').mockResolvedValueOnce('d3');
     runCopilotReviewMock
-      .mockResolvedValueOnce([{ severity: 'important', comment: '1' }])
-      .mockResolvedValueOnce([{ severity: 'important', comment: '2' }])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce('important: 1')
+      .mockResolvedValueOnce('important: 2')
+      .mockResolvedValueOnce('no issues');
     const claude = {
       runArbiter: vi
         .fn()

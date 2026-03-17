@@ -102,7 +102,7 @@ describe('ClaudeClient', () => {
       spec: 'spec',
       diff: 'diff',
       model: 'claude',
-      reviewComments: [{ severity: 'critical', comment: 'broken' }],
+      reviewText: 'critical: broken',
     });
 
     expect(result).toEqual({

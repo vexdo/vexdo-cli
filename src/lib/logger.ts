@@ -2,6 +2,8 @@ import ora from 'ora';
 import type { Ora } from 'ora';
 import pc from 'picocolors';
 
+import type { ReviewComment } from '../types/index.js';
+
 
 let verboseEnabled = false;
 

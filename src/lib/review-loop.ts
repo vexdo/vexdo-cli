@@ -8,7 +8,6 @@ import * as logger from './logger.js';
 import * as state from './state.js';
 import type {
   ArbiterResult,
-  ReviewComment,
   StepState,
   Task,
   TaskStep,
@@ -30,7 +29,7 @@ export interface ReviewLoopOptions {
 export interface ReviewLoopResult {
   decision: 'submit' | 'escalate';
   finalIteration: number;
-  lastReviewComments: ReviewComment[];
+  lastReview: string;
   lastArbiterResult: ArbiterResult;
 }
 
@@ -45,7 +44,7 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
     return {
       decision: 'submit',
       finalIteration: opts.stepState.iteration,
-      lastReviewComments: [],
+      lastReview: '',
       lastArbiterResult: {
         decision: 'submit',
         reasoning: 'Dry run: skipped reviewer and arbiter calls.',
@@ -74,7 +73,7 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
       return {
         decision: 'submit',
         finalIteration: iteration,
-        lastReviewComments: [],
+        lastReview: '',
         lastArbiterResult: {
           decision: 'submit',
           reasoning: 'No changes in git diff for service directory.',
@@ -90,15 +89,12 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
           logger.info(`Waiting for reviewer response (${formatElapsed(reviewerStartedAt)})`);
         }, 15_000)
       : null;
-    const comments = await runCopilotReview(opts.step.spec, { cwd: serviceRoot }).finally(() => {
+    const reviewText = await runCopilotReview(opts.step.spec, diff, { cwd: serviceRoot }).finally(() => {
         if (reviewerHeartbeat) {
           clearInterval(reviewerHeartbeat);
         }
       });
     logger.info(`Reviewer response received in ${formatElapsed(reviewerStartedAt)}`);
-
-    const review = { comments };
-    logger.reviewSummary(review.comments);
 
     logger.info(`Requesting arbiter decision (model: ${opts.config.review.model})`);
     const arbiterStartedAt = Date.now();
@@ -111,7 +107,7 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
       .runArbiter({
         spec: opts.step.spec,
         diff,
-        reviewComments: review.comments,
+        reviewText,
         model: opts.config.review.model,
       })
       .finally(() => {
@@ -124,18 +120,18 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
 
     state.saveIterationLog(opts.projectRoot, opts.taskId, opts.step.service, iteration, {
       diff,
-      review,
+      review: reviewText,
       arbiter,
     });
 
-    opts.stepState.lastReviewComments = review.comments;
+    opts.stepState.lastReview = reviewText;
     opts.stepState.lastArbiterResult = arbiter;
 
     if (arbiter.decision === 'submit') {
       return {
         decision: 'submit',
         finalIteration: iteration,
-        lastReviewComments: review.comments,
+        lastReview: reviewText,
         lastArbiterResult: arbiter,
       };
     }
@@ -144,7 +140,7 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
       return {
         decision: 'escalate',
         finalIteration: iteration,
-        lastReviewComments: review.comments,
+        lastReview: reviewText,
         lastArbiterResult: arbiter,
       };
     }
@@ -153,7 +149,7 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
       return {
         decision: 'escalate',
         finalIteration: iteration,
-        lastReviewComments: review.comments,
+        lastReview: reviewText,
         lastArbiterResult: {
           decision: 'escalate',
           reasoning: 'Max review iterations reached while arbiter still requested fixes.',
@@ -166,7 +162,7 @@ export async function runReviewLoop(opts: ReviewLoopOptions): Promise<ReviewLoop
       return {
         decision: 'escalate',
         finalIteration: iteration,
-        lastReviewComments: review.comments,
+        lastReview: reviewText,
         lastArbiterResult: {
           decision: 'escalate',
           reasoning: 'Arbiter returned fix decision without feedback_for_codex.',
