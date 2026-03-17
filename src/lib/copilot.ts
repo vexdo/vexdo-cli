@@ -1,20 +1,13 @@
 import { spawn } from 'node:child_process';
 
-import type { CommentSeverity, CopilotErrorCode, ReviewComment } from '../types/index.js';
+import type { CopilotErrorCode } from '../types/index.js';
 
-const COPILOT_TIMEOUT_MS = 5 * 60_000;
+const COPILOT_TIMEOUT_MS = 30 * 60_000;
 
 interface CommandResult {
   stdout: string;
   stderr: string;
   exitCode: number;
-}
-
-interface ParsedComment {
-  message: string;
-  severity?: unknown;
-  file?: unknown;
-  line?: unknown;
 }
 
 /**
@@ -89,114 +82,6 @@ function runCopilotCommand(
   });
 }
 
-function normalizeSeverity(raw: unknown): CommentSeverity {
-  const sev = typeof raw === 'string' ? raw.toLowerCase() : '';
-
-  if (sev === 'error' || sev === 'high' || sev === 'critical') {
-    return 'critical';
-  }
-
-  if (sev === 'warning' || sev === 'medium') {
-    return 'important';
-  }
-
-  if (sev === 'info' || sev === 'low') {
-    return 'minor';
-  }
-
-  return 'minor';
-}
-
-function maybeNumber(raw: unknown): number | undefined {
-  if (typeof raw === 'number' && Number.isFinite(raw)) {
-    return Math.trunc(raw);
-  }
-
-  if (typeof raw === 'string') {
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isNaN(n)) {
-      return n;
-    }
-  }
-
-  return undefined;
-}
-
-function collectParsedComments(value: unknown, comments: ParsedComment[]): void {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectParsedComments(item, comments);
-    }
-    return;
-  }
-
-  if (!value || typeof value !== 'object') {
-    return;
-  }
-
-  const record = value as Record<string, unknown>;
-
-  const message = [record.message, record.body, record.text].find((field) => typeof field === 'string');
-
-  if (typeof message === 'string' && message.trim()) {
-    comments.push({
-      message: message.trim(),
-      severity: record.severity ?? record.priority,
-      file: record.file ?? record.path,
-      line: record.line,
-    });
-  }
-
-  for (const nested of Object.values(record)) {
-    collectParsedComments(nested, comments);
-  }
-}
-
-function parseReviewComments(stdout: string): ReviewComment[] {
-  const parsedObjects: unknown[] = [];
-
-  for (const line of stdout.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-
-    try {
-      parsedObjects.push(JSON.parse(trimmed));
-    } catch {
-      // Ignore non-JSON lines.
-    }
-  }
-
-  const parsed: ParsedComment[] = [];
-  for (const entry of parsedObjects) {
-    collectParsedComments(entry, parsed);
-  }
-
-  const deduped = new Set<string>();
-  const output: ReviewComment[] = [];
-
-  for (const item of parsed) {
-    const file = typeof item.file === 'string' && item.file.length > 0 ? item.file : undefined;
-    const line = maybeNumber(item.line);
-    const lineKey = line === undefined ? '' : String(line);
-    const key = `${item.message}::${file ?? ''}::${lineKey}`;
-
-    if (deduped.has(key)) {
-      continue;
-    }
-
-    deduped.add(key);
-    output.push({
-      severity: normalizeSeverity(item.severity),
-      file,
-      line,
-      comment: item.message,
-    });
-  }
-
-  return output;
-}
 
 export async function checkCopilotAvailable(): Promise<void> {
   try {

@@ -16,7 +16,7 @@ import { buildInitialStepState, ensureTaskDirectory, loadAndValidateTask, moveTa
 import type { ArbiterResult, TaskStep } from '../types/index.js';
 
 const POLL_INTERVAL_MS = 2 * 60_000;
-const POLL_TIMEOUT_MS = 30 * 60_000;
+const POLL_TIMEOUT_MS = 60 * 60_000;
 
 export interface StartCommandOptions {
   dryRun?: boolean;
@@ -120,7 +120,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
             return { service: step.service, status: 'done' };
           }
 
-          const envId = options.dryRun ? undefined : resolveCodexEnvId(step.service, serviceCfg.env_id);
+          const envId = resolveCodexEnvId(step.service, serviceCfg.env_id);
 
           scopedLogger.info('Submitting to Codex Cloud...');
           const submissionSession = stepState.session_id ?? (await codex.submitTask(step.spec, { cwd: serviceRoot, envId, branch: config.codex.base_branch }));
@@ -292,7 +292,7 @@ async function runCloudReviewLoop(opts: {
     const reviewText = await runCopilotReview(opts.spec, diff, {
       cwd: opts.serviceRoot,
       history: history.length > 0 ? history : undefined,
-      onChunk: (chunk) => opts.log.debug(chunk.trimEnd()),
+      onChunk: (chunk) => { opts.log.debug(chunk.trimEnd()); },
       onRawOutput: (_, stderr) => {
         if (stderr) opts.log.debug(`copilot stderr:\n${stderr}`);
       },
