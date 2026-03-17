@@ -24,6 +24,12 @@ export interface ArbiterOptions {
   maxTokens?: number;
 }
 
+export interface ExpandFeedbackOptions {
+  spec: string;
+  feedback: string;
+  model: string;
+}
+
 export class ClaudeError extends Error {
   attempt: number;
   cause: unknown;
@@ -65,6 +71,31 @@ export class ClaudeClient {
       });
 
       return parseReviewerResult(extractTextFromResponse(response));
+    });
+  }
+
+  async expandFeedback(opts: ExpandFeedbackOptions): Promise<string> {
+    return this.runWithRetry(async () => {
+      const response = await this.client.messages.create({
+        model: opts.model,
+        max_tokens: 2048,
+        messages: [
+          {
+            role: 'user',
+            content:
+              `You are preparing a detailed fix instruction for a code agent (Codex).\n\n` +
+              `ORIGINAL TASK SPEC:\n${opts.spec}\n\n` +
+              `USER FEEDBACK — what needs to be fixed or improved:\n${opts.feedback}\n\n` +
+              `Write a detailed, actionable fix instruction for Codex. Include:\n` +
+              `- What specifically needs to change and why\n` +
+              `- Any relevant technical details inferable from the context\n` +
+              `- References to the original spec where relevant\n\n` +
+              `Output ONLY the instruction, no preamble or explanation.`,
+          },
+        ],
+      });
+
+      return extractTextFromResponse(response);
     });
   }
 

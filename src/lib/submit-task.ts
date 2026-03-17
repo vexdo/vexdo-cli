@@ -1,15 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import * as codex from './codex.js';
 import * as gh from './gh.js';
+import * as git from './git.js';
 import * as logger from './logger.js';
-import { clearState, saveState } from './state.js';
+import { saveState } from './state.js';
 import { ensureTaskDirectory, moveTaskFileAtomically } from './tasks.js';
 import type { VexdoConfig, VexdoState } from '../types/index.js';
 
 export async function submitActiveTask(projectRoot: string, config: VexdoConfig, state: VexdoState): Promise<void> {
   for (const step of state.steps) {
-    if (step.status !== 'done' && step.status !== 'in_progress') {
+    const isSubmittable = step.status === 'done' || step.status === 'in_progress' || step.status === 'escalated';
+    if (!isSubmittable) {
       continue;
     }
 
@@ -22,6 +25,16 @@ export async function submitActiveTask(projectRoot: string, config: VexdoConfig,
     if (!step.branch) {
       throw new Error(`No branch found in state for service ${step.service}. Cannot create PR.`);
     }
+
+    if (step.status === 'escalated' && step.session_id) {
+      logger.warn(`[${step.service}] Escalated — applying pending Codex diff before creating PR...`);
+      await git.checkoutBranch(step.branch, servicePath);
+      await codex.applyDiff(step.session_id, {cwd: servicePath});
+      await git.exec(['add', '-A'], servicePath);
+      await git.exec(['commit', '-m', 'chore: apply escalated codex changes'], servicePath);
+      await git.push(step.branch, servicePath);
+    }
+
     const body = `Task: ${state.taskId}\nService: ${step.service}`;
     const url = await gh.createPr({
       title: `${state.taskTitle} [${step.service}]`,
@@ -35,13 +48,11 @@ export async function submitActiveTask(projectRoot: string, config: VexdoConfig,
   }
 
   state.status = 'done';
-  saveState(projectRoot, state);
 
   const doneDir = ensureTaskDirectory(projectRoot, 'done');
   if (fs.existsSync(state.taskPath)) {
     state.taskPath = moveTaskFileAtomically(state.taskPath, doneDir);
-    saveState(projectRoot, state);
   }
 
-  clearState(projectRoot);
+  saveState(projectRoot, state);
 }

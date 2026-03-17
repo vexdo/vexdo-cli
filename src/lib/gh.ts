@@ -47,7 +47,13 @@ export async function createPr(opts: CreatePrOptions): Promise<string> {
       {cwd: opts.cwd, timeout: GH_TIMEOUT_MS, encoding: 'utf8'},
       (error, stdout, stderr) => {
         if (error) {
-          reject(new Error((stderr || error.message).trim()));
+          const msg = (stderr || error.message).trim();
+          const existingUrl = /https:\/\/\S+\/pull\/\d+/.exec(msg)?.[0];
+          if (existingUrl) {
+            resolve(existingUrl);
+            return;
+          }
+          reject(new Error(msg));
           return;
         }
         resolve(stdout.trim());
