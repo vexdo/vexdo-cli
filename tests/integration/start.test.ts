@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   resumeTask: vi.fn(),
   createBranch: vi.fn(),
   checkoutBranch: vi.fn(),
+  fetchBranch: vi.fn(),
+  commitFiles: vi.fn(),
+  push: vi.fn(),
   gitExec: vi.fn(),
   getBranchName: vi.fn((taskId: string, service: string) => `vexdo/${taskId}/${service}`),
   checkGhAvailable: vi.fn(),
@@ -20,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   ClaudeClient: vi.fn(),
   checkCopilotAvailable: vi.fn(),
   runCopilotReview: vi.fn(),
+  generateCommitMessage: vi.fn(),
 }));
 
 vi.mock('../../src/lib/codex.js', () => ({
@@ -33,12 +37,16 @@ vi.mock('../../src/lib/codex.js', () => ({
 vi.mock('../../src/lib/git.js', () => ({
   createBranch: mocks.createBranch,
   checkoutBranch: mocks.checkoutBranch,
+  fetchBranch: mocks.fetchBranch,
+  commitFiles: mocks.commitFiles,
+  push: mocks.push,
   getBranchName: mocks.getBranchName,
   exec: mocks.gitExec,
 }));
 vi.mock('../../src/lib/copilot.js', () => ({
   checkCopilotAvailable: mocks.checkCopilotAvailable,
   runCopilotReview: mocks.runCopilotReview,
+  generateCommitMessage: mocks.generateCommitMessage,
 }));
 vi.mock('../../src/lib/gh.js', () => ({
   checkGhAvailable: mocks.checkGhAvailable,
@@ -67,6 +75,7 @@ function setupProject(root: string): void {
 services:
   - name: api
     path: ./services/api
+    env_id: test-env-id
 review:
   model: m
   max_iterations: 3
@@ -87,13 +96,17 @@ beforeEach(() => {
 
   mocks.getBranchName.mockImplementation((taskId: string, service: string) => `vexdo/${taskId}/${service}`);
   mocks.gitExec.mockResolvedValue('');
+  mocks.fetchBranch.mockResolvedValue(undefined);
+  mocks.commitFiles.mockResolvedValue(undefined);
+  mocks.push.mockResolvedValue(undefined);
   mocks.submitTask.mockResolvedValue('sess-1');
   mocks.pollStatus.mockResolvedValue('completed');
   mocks.getDiff.mockResolvedValue('diff --git a/x b/x');
   mocks.applyDiff.mockResolvedValue(undefined);
   mocks.resumeTask.mockResolvedValue('sess-2');
   mocks.checkCopilotAvailable.mockResolvedValue(undefined);
-  mocks.runCopilotReview.mockResolvedValue([]);
+  mocks.runCopilotReview.mockResolvedValue('');
+  mocks.generateCommitMessage.mockResolvedValue('chore: update');
 
   mocks.ClaudeClient.mockImplementation(() => ({
     runArbiter: vi.fn().mockResolvedValue({decision: 'submit', reasoning: 'ok', summary: 'ok'}),
@@ -117,10 +130,10 @@ describe('start integration', () => {
 
     await runStart(taskPath, {});
 
-    expect(mocks.createBranch).toHaveBeenCalledWith('vexdo/t1/api', expect.stringMatching(/[\\/]services[\\/]api$/));
+    expect(mocks.createBranch).toHaveBeenCalledWith('vexdo/t1/api', expect.stringMatching(/[\\/]services[\\/]api$/), 'main');
     expect(mocks.submitTask).toHaveBeenCalled();
-    expect(mocks.pollStatus).toHaveBeenCalledWith('sess-1', expect.objectContaining({intervalMs: 5_000, timeoutMs: 600_000}));
-    expect(mocks.getDiff).toHaveBeenCalledWith('sess-1');
+    expect(mocks.pollStatus).toHaveBeenCalledWith('sess-1', expect.objectContaining({intervalMs: 120_000, timeoutMs: 3_600_000}));
+    expect(mocks.getDiff).toHaveBeenCalledWith('sess-1', expect.any(Object));
     expect(fs.existsSync(path.join(root, 'tasks', 'review', 'task.yml'))).toBe(true);
   });
 
@@ -140,7 +153,7 @@ describe('start integration', () => {
 
     await runStart(taskPath, {});
 
-    expect(mocks.resumeTask).toHaveBeenCalledWith('sess-1', 'please fix');
+    expect(mocks.resumeTask).toHaveBeenCalledWith('do work', 'please fix', expect.objectContaining({ branch: 'vexdo/t1/api' }));
     expect(mocks.pollStatus).toHaveBeenCalledWith('sess-2', expect.any(Object));
   });
 

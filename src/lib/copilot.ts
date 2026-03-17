@@ -99,9 +99,10 @@ export async function generateCommitMessage(spec: string, diff: string, opts?: {
     `Generate a conventional commit message for the following diff.\n` +
     `Use the spec as context for what was intended.\n` +
     `Rules:\n` +
-    `- Use conventional commits format: type(scope): description\n` +
+    `- Format: type(scope): description\n` +
+    `- scope is REQUIRED — use the primary module or subsystem changed (e.g. cli, api, git, config, review)\n` +
     `- Types: feat, fix, test, refactor, chore\n` +
-    `- Keep the subject line under 72 characters\n` +
+    `- Description: imperative mood, concise, no filler words, under 60 characters\n` +
     `- Output ONLY the commit message, no explanation, no markdown, no quotes\n\n` +
     `SPEC:\n${spec}\n\nDIFF:\n${diff}`;
 

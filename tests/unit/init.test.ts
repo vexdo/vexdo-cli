@@ -38,7 +38,7 @@ describe('runInit', () => {
     const config = parse(fs.readFileSync(configPath, 'utf8')) as {
       services: { name: string; path: string }[];
       review: { model: string; max_iterations: number; auto_submit: boolean };
-      codex: { model: string };
+      codex: { model: string; base_branch: string };
     };
 
     expect(config.services).toEqual([
@@ -50,7 +50,7 @@ describe('runInit', () => {
       max_iterations: 5,
       auto_submit: true,
     });
-    expect(config.codex).toEqual({ model: 'gpt-4.1' });
+    expect(config.codex).toEqual({ model: 'gpt-4.1', base_branch: 'main' });
 
     for (const taskDir of ['backlog', 'in_progress', 'review', 'done', 'blocked']) {
       expect(fs.existsSync(path.join(root, 'tasks', taskDir))).toBe(true);

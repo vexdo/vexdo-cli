@@ -64,7 +64,7 @@ codex:
       version: 1,
       services: [{ name: 'api', path: './services/api' }],
       review: { model: 'custom-review', max_iterations: 7, auto_submit: true },
-      codex: { model: 'custom-codex' },
+      codex: { model: 'custom-codex', base_branch: 'main' },
       maxConcurrent: undefined,
     });
   });
@@ -87,7 +87,7 @@ services:
       max_iterations: 3,
       auto_submit: false,
     });
-    expect(result.codex).toEqual({ model: 'gpt-4o' });
+    expect(result.codex).toEqual({ model: 'gpt-4o', base_branch: 'main' });
     expect(result.maxConcurrent).toBeUndefined();
   });
 
