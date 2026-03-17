@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Command } from 'commander';
 
 import { ClaudeClient } from '../lib/claude.js';
-import { checkCopilotAvailable, CopilotReviewError, runCopilotReview, type ReviewIteration } from '../lib/copilot.js';
+import { checkCopilotAvailable, CopilotReviewError, generateCommitMessage, runCopilotReview, type ReviewIteration } from '../lib/copilot.js';
 import * as codex from '../lib/codex.js';
 import { findProjectRoot, loadConfig } from '../lib/config.js';
 import * as git from '../lib/git.js';
@@ -329,7 +329,9 @@ async function runCloudReviewLoop(opts: {
     // Apply, commit and push for both submit and fix — branch is now up to date
     opts.log.info(`Applying diff and pushing to ${opts.branch}...`);
     await codex.applyDiff(sessionId, {cwd: opts.serviceRoot});
-    await git.commitFiles(changedFiles, `vexdo: iteration ${String(iteration + 1)}`, opts.serviceRoot);
+    const commitMessage = await generateCommitMessage(opts.spec, diff, {cwd: opts.serviceRoot});
+    opts.log.info(`Commit: ${commitMessage}`);
+    await git.commitFiles(changedFiles, commitMessage, opts.serviceRoot);
     await git.push(opts.branch, opts.serviceRoot);
 
     if (arbiter.decision === 'submit') {

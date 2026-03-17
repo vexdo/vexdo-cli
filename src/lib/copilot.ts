@@ -209,6 +209,33 @@ export async function checkCopilotAvailable(): Promise<void> {
   }
 }
 
+export async function generateCommitMessage(spec: string, diff: string, opts?: {cwd?: string}): Promise<string> {
+  const prompt =
+    `Generate a conventional commit message for the following diff.\n` +
+    `Use the spec as context for what was intended.\n` +
+    `Rules:\n` +
+    `- Use conventional commits format: type(scope): description\n` +
+    `- Types: feat, fix, test, refactor, chore\n` +
+    `- Keep the subject line under 72 characters\n` +
+    `- Output ONLY the commit message, no explanation, no markdown, no quotes\n\n` +
+    `SPEC:\n${spec}\n\nDIFF:\n${diff}`;
+
+  let result: CommandResult;
+  try {
+    result = await runCopilotCommand(['-p', prompt, '--silent', '--no-ask-user'], {cwd: opts?.cwd});
+  } catch {
+    return 'chore: apply codex changes';
+  }
+
+  if (result.exitCode !== 0 || !result.stdout.trim()) {
+    return 'chore: apply codex changes';
+  }
+
+  // Take only the first line in case copilot adds explanation
+  const firstLine = result.stdout.trim().split('\n')[0] ?? '';
+  return firstLine.length > 0 ? firstLine : 'chore: apply codex changes';
+}
+
 export interface ReviewIteration {
   review: string;
   feedbackSentToCodex: string;
