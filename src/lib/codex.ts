@@ -1,4 +1,4 @@
-import {spawn} from 'node:child_process';
+import {execFile, spawn} from 'node:child_process';
 
 const CODEX_TIMEOUT_MS = 600_000;
 
@@ -243,13 +243,18 @@ export async function applyDiff(sessionId: string, options?: {cwd?: string}): Pr
   const result = await runCodexCommand(['cloud', 'apply', sessionId], {cwd: options?.cwd});
   if (result.exitCode === 0) return;
 
-  // Partial apply: some files applied with no conflicts — treat as success
+  // Partial apply: some files applied — check conflicts
   const partialMatch = /applied=(\d+)[^)]*conflicts=(\d+)/i.exec(result.stdout);
   if (partialMatch) {
     const applied = parseInt(partialMatch[1], 10);
     const conflicts = parseInt(partialMatch[2], 10);
     if (applied > 0 && conflicts === 0) return;
   }
+
+  // Reset any partially-applied changes so the branch stays clean for retry
+  await new Promise<void>((resolve) => {
+    execFile('git', ['reset', '--hard', 'HEAD'], {cwd: options?.cwd}, () => resolve());
+  });
 
   throw new CodexError('apply_failed', `Failed to apply diff for codex cloud session ${sessionId}.`, result);
 }

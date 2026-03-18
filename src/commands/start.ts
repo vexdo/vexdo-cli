@@ -122,9 +122,11 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
           scopedLogger.info(`Submitting step ${String(stepIndexWithinService + 1)} to Codex Cloud...`);
           // Reuse session_id only when resuming the first step of a service
           const canResumeSession = options.resume && stepIndexWithinService === 0 && stepState.session_id !== undefined;
+          // For the first step use the base branch; subsequent steps build on the existing working branch
+          const codexBranch = stepIndexWithinService === 0 ? config.codex.base_branch : branch;
           const submissionSession = canResumeSession
             ? stepState.session_id!
-            : await codex.submitTask(step.spec, { cwd: serviceRoot, envId, branch: config.codex.base_branch });
+            : await codex.submitTask(step.spec, { cwd: serviceRoot, envId, branch: codexBranch });
           await updateStep(projectRoot, task.id, step.service, { session_id: submissionSession });
 
           const execution = await runCloudReviewLoop({
@@ -135,7 +137,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
             sessionId: submissionSession,
             branch,
             stepState: {
-              iteration: stepState.iteration,
+              iteration: 0,
               session_id: submissionSession,
             },
             projectRoot,
