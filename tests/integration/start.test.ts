@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   checkoutBranch: vi.fn(),
   fetchBranch: vi.fn(),
   commitFiles: vi.fn(),
+  stageAll: vi.fn(),
+  commit: vi.fn(),
   push: vi.fn(),
   gitExec: vi.fn(),
   getBranchName: vi.fn((taskId: string, service: string) => `vexdo/${taskId}/${service}`),
@@ -39,6 +41,8 @@ vi.mock('../../src/lib/git.js', () => ({
   checkoutBranch: mocks.checkoutBranch,
   fetchBranch: mocks.fetchBranch,
   commitFiles: mocks.commitFiles,
+  stageAll: mocks.stageAll,
+  commit: mocks.commit,
   push: mocks.push,
   getBranchName: mocks.getBranchName,
   exec: mocks.gitExec,
@@ -98,6 +102,8 @@ beforeEach(() => {
   mocks.gitExec.mockResolvedValue('');
   mocks.fetchBranch.mockResolvedValue(undefined);
   mocks.commitFiles.mockResolvedValue(undefined);
+  mocks.stageAll.mockResolvedValue(undefined);
+  mocks.commit.mockResolvedValue(undefined);
   mocks.push.mockResolvedValue(undefined);
   mocks.submitTask.mockResolvedValue('sess-1');
   mocks.pollStatus.mockResolvedValue('completed');

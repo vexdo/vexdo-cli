@@ -48,16 +48,23 @@ function parseTaskStep(value: unknown, index: number, config: VexdoConfig): Task
 
 
 function validateDependencies(steps: TaskStep[]): void {
-  const byService = new Map(steps.map((step) => [step.service, step]));
+  const serviceNames = new Set(steps.map((step) => step.service));
+
+  // Collect depends_on per service (union across all steps for that service)
+  const serviceDeps = new Map<string, Set<string>>();
+  for (const service of serviceNames) {
+    serviceDeps.set(service, new Set());
+  }
 
   for (const step of steps) {
     for (const dep of step.depends_on ?? []) {
-      if (!byService.has(dep)) {
-        throw new Error(`step '${step.service}' depends on unknown service '${dep}'`);
+      if (!serviceNames.has(dep)) {
+        throw new Error(`step for '${step.service}' depends on unknown service '${dep}'`);
       }
       if (dep === step.service) {
-        throw new Error(`step '${step.service}' cannot depend on itself`);
+        throw new Error(`step for '${step.service}' cannot depend on itself`);
       }
+      serviceDeps.get(step.service)!.add(dep);
     }
   }
 
@@ -73,16 +80,15 @@ function validateDependencies(steps: TaskStep[]): void {
     }
 
     visiting.add(service);
-    const step = byService.get(service);
-    for (const dep of step?.depends_on ?? []) {
+    for (const dep of serviceDeps.get(service) ?? []) {
       visit(dep);
     }
     visiting.delete(service);
     visited.add(service);
   };
 
-  for (const step of steps) {
-    visit(step.service);
+  for (const service of serviceNames) {
+    visit(service);
   }
 }
 
@@ -115,11 +121,19 @@ export function loadAndValidateTask(taskPath: string, config: VexdoConfig): Task
 }
 
 export function buildInitialStepState(task: Task): StepState[] {
-  return task.steps.map((step) => ({
-    service: step.service,
-    status: 'pending',
-    iteration: 0,
-  }));
+  const seen = new Set<string>();
+  return task.steps
+    .filter((step) => {
+      if (seen.has(step.service)) return false;
+      seen.add(step.service);
+      return true;
+    })
+    .map((step) => ({
+      service: step.service,
+      status: 'pending' as const,
+      iteration: 0,
+      currentStepIndex: 0,
+    }));
 }
 
 export function ensureTaskDirectory(projectRoot: string, taskState: 'backlog' | 'in_progress' | 'review' | 'done' | 'blocked'): string {

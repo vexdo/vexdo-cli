@@ -82,4 +82,61 @@ describe('runStepsConcurrently', () => {
 
     expect(maxActive).toBe(2);
   });
+
+  it('runs multiple steps for the same service sequentially', async () => {
+    const steps: TaskStep[] = [
+      { service: 'api', spec: 'step1' },
+      { service: 'api', spec: 'step2' },
+      { service: 'api', spec: 'step3' },
+    ];
+
+    const order: Array<{ service: string; index: number }> = [];
+
+    const results = await runStepsConcurrently(steps, {}, (step, idx) => {
+      order.push({ service: step.service, index: idx });
+      return Promise.resolve({ service: step.service, status: 'done' as const });
+    });
+
+    expect(order).toEqual([
+      { service: 'api', index: 0 },
+      { service: 'api', index: 1 },
+      { service: 'api', index: 2 },
+    ]);
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({ service: 'api', status: 'done' });
+  });
+
+  it('stops same-service steps after a failure', async () => {
+    const steps: TaskStep[] = [
+      { service: 'api', spec: 'step1' },
+      { service: 'api', spec: 'step2' },
+    ];
+
+    const runStep = vi.fn((_step: TaskStep, idx: number) => {
+      if (idx === 0) return Promise.resolve({ service: 'api', status: 'failed' as const, error: 'oops' });
+      return Promise.resolve({ service: 'api', status: 'done' as const });
+    });
+
+    const results = await runStepsConcurrently(steps, {}, runStep);
+
+    expect(results).toEqual([{ service: 'api', status: 'failed', error: 'oops' }]);
+    expect(runStep).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs same-service and cross-service steps with correct ordering', async () => {
+    const steps: TaskStep[] = [
+      { service: 'api', spec: 'api-step1' },
+      { service: 'api', spec: 'api-step2' },
+      { service: 'web', spec: 'web', depends_on: ['api'] },
+    ];
+
+    const order: string[] = [];
+
+    await runStepsConcurrently(steps, {}, (step, idx) => {
+      order.push(`${step.service}[${String(idx)}]`);
+      return Promise.resolve({ service: step.service, status: 'done' as const });
+    });
+
+    expect(order).toEqual(['api[0]', 'api[1]', 'web[0]']);
+  });
 });

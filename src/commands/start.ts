@@ -73,7 +73,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
     const stepResults = await runStepsConcurrently(
       task.steps,
       { maxConcurrent: config.maxConcurrent },
-      async (step: TaskStep): Promise<StepResult> => {
+      async (step: TaskStep, stepIndexWithinService: number): Promise<StepResult> => {
         const scopedLogger = logger.withPrefix(`[${step.service}]`);
         const latestState = options.dryRun ? state : loadState(projectRoot);
         const stepState = latestState?.steps.find((item) => item.service === step.service);
@@ -82,7 +82,8 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
           return { service: step.service, status: 'failed', error: 'step_state_missing' };
         }
 
-        if (stepState.status === 'done') {
+        // Skip steps already processed in a previous run
+        if (stepIndexWithinService < (stepState.currentStepIndex ?? 0)) {
           return { service: step.service, status: 'done', sessionId: stepState.session_id };
         }
 
@@ -96,32 +97,34 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
 
         try {
           if (!options.dryRun) {
-            if (options.resume) {
-              if (stepState.branch) {
+            if (stepIndexWithinService === 0) {
+              // First step for this service: create branch
+              if (options.resume && stepState.branch) {
                 await git.checkoutBranch(stepState.branch, serviceRoot);
               } else {
+                await git.fetchBranch(config.codex.base_branch, serviceRoot);
                 await git.createBranch(branch, serviceRoot, config.codex.base_branch);
               }
+              await updateStep(projectRoot, task.id, step.service, { status: 'in_progress', branch });
             } else {
-              await git.fetchBranch(config.codex.base_branch, serviceRoot);
-              await git.createBranch(branch, serviceRoot, config.codex.base_branch);
+              // Subsequent steps: reuse the existing branch
+              await git.checkoutBranch(stepState.branch ?? branch, serviceRoot);
             }
-
-            await updateStep(projectRoot, task.id, step.service, {
-              status: 'in_progress',
-              branch,
-            });
           }
 
           if (options.dryRun) {
-            scopedLogger.info(`[dry-run] Would run codex cloud implementation for service ${step.service}`);
+            scopedLogger.info(`[dry-run] Would run codex cloud implementation for service ${step.service} (step ${String(stepIndexWithinService + 1)})`);
             return { service: step.service, status: 'done' };
           }
 
           const envId = resolveCodexEnvId(step.service, serviceCfg.env_id);
 
-          scopedLogger.info('Submitting to Codex Cloud...');
-          const submissionSession = stepState.session_id ?? (await codex.submitTask(step.spec, { cwd: serviceRoot, envId, branch: config.codex.base_branch }));
+          scopedLogger.info(`Submitting step ${String(stepIndexWithinService + 1)} to Codex Cloud...`);
+          // Reuse session_id only when resuming the first step of a service
+          const canResumeSession = options.resume && stepIndexWithinService === 0 && stepState.session_id !== undefined;
+          const submissionSession = canResumeSession
+            ? stepState.session_id!
+            : await codex.submitTask(step.spec, { cwd: serviceRoot, envId, branch: config.codex.base_branch });
           await updateStep(projectRoot, task.id, step.service, { session_id: submissionSession });
 
           const execution = await runCloudReviewLoop({
@@ -149,6 +152,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
             lastArbiterResult: execution.lastArbiterResult,
             iteration: execution.finalIteration,
             session_id: execution.sessionId,
+            currentStepIndex: stepIndexWithinService + 1,
           });
 
           if (execution.lastArbiterResult.decision === 'escalate') {
@@ -167,8 +171,16 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
             return { service: step.service, status: 'escalated', sessionId: execution.sessionId };
           }
 
-          await updateStep(projectRoot, task.id, step.service, { status: 'done' });
-          scopedLogger.success('Review passed — ready for PR');
+          const stepsForService = task.steps.filter((s) => s.service === step.service).length;
+          const isLastStep = stepIndexWithinService === stepsForService - 1;
+
+          if (isLastStep) {
+            await updateStep(projectRoot, task.id, step.service, { status: 'done' });
+            scopedLogger.success('Review passed — ready for PR');
+          } else {
+            scopedLogger.success(`Step ${String(stepIndexWithinService + 1)} passed — continuing to next step`);
+          }
+
           return { service: step.service, status: 'done', sessionId: execution.sessionId };
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);

@@ -1,6 +1,6 @@
 # vexdo
 
-Automated implementation + review loop for multi-service tasks, powered by Codex and Claude.
+Automated implementation + review loop for multi-service tasks, powered by Codex Cloud and Claude.
 
 ![CI](https://github.com/vexdo/vexdo-cli/actions/workflows/ci.yml/badge.svg)
 ![npm](https://img.shields.io/npm/v/@vexdo/cli)
@@ -9,7 +9,7 @@ Automated implementation + review loop for multi-service tasks, powered by Codex
 
 ## 1) What is vexdo
 
-`vexdo` is a CLI that turns a task spec into a controlled execution pipeline across one or more services. It applies changes with Codex, reviews with Claude, loops until quality gates are met, and then opens PRs (or escalates when needed).
+`vexdo` is a CLI that turns a task spec into a controlled execution pipeline across one or more services. It submits changes to Codex Cloud, reviews with GitHub Copilot and Claude, loops until quality gates are met, and then opens PRs (or escalates when needed).
 
 Real-world example: you need to add a new billing field in API, web, and worker repos. Instead of running separate ad-hoc sessions, you define one `task.yml` with ordered steps and let `vexdo` orchestrate execution + review with traceable state.
 
@@ -20,18 +20,20 @@ task.yml
    ↓
 vexdo start
    ↓
-codex exec
+codex cloud submit          ← each service step runs in an isolated cloud sandbox
    ↓
-git diff
+codex cloud poll
    ↓
-claude reviewer
+copilot reviewer            ← reads diff with full repo context
    ↓
-claude arbiter
+claude arbiter              ← decides: submit / fix / escalate
    ↓
-fix loop (max N)
+fix loop (max N iterations)
    ↓
 PR or escalate
 ```
+
+Steps without cross-service dependencies run **concurrently**. Multiple steps for the same service run **sequentially in the same branch**, building on each other's output.
 
 ## 3) Requirements
 
@@ -45,24 +47,27 @@ PR or escalate
 ## 4) Quick start (5 minutes)
 
 ```bash
-npm install -g @vexdo/cli@0.1.0
+npm install -g @vexdo/cli
 cd my-project
 vexdo init
-# create tasks/backlog/my-task.yml
+# create tasks/backlog/my-task.yml  (or use /vexdo-spec in Claude Code)
 vexdo start tasks/backlog/my-task.yml
 ```
+
+`vexdo init` also installs a `/vexdo-spec` skill into Claude Code (`.claude/commands/vexdo-spec.md`) that guides writing well-formed task specs.
 
 ## 5) Commands
 
 | Command | Description |
 |---|---|
-| `vexdo init` | Initialize `.vexdo.yml`, folders, and `.gitignore` entry. |
+| `vexdo init` | Initialize `.vexdo.yml`, folders, `.gitignore` entry, and Claude Code skill. |
 | `vexdo start <task-file> [--resume]` | Start a task and run implementation/review orchestration. |
 | `vexdo review` | Re-run review loop for the current step. |
 | `vexdo fix <feedback>` | Send targeted feedback to Codex, then review again. |
 | `vexdo submit` | Create PRs for active task branches. |
 | `vexdo status` | Show current task state. |
 | `vexdo logs [task-id] [--full]` | Inspect iteration logs. |
+| `vexdo board` | Open task board TUI. |
 | `vexdo abort [--force]` | Abort active task and move task file back to backlog. |
 
 ### Global flags
@@ -79,6 +84,7 @@ Interactive bootstrap wizard:
 - writes `.vexdo.yml`
 - creates `tasks/*` lanes and `.vexdo/logs/`
 - adds `.vexdo/` to `.gitignore` once
+- installs `/vexdo-spec` Claude Code skill at `.claude/commands/vexdo-spec.md`
 
 #### `vexdo start <task-file>`
 Flags:
@@ -86,8 +92,9 @@ Flags:
 
 Behavior:
 - validates config and task
-- creates/checks service branches
-- runs Codex then review loop per step
+- creates service branches (one branch per service, shared across sequential steps)
+- runs Codex Cloud then review loop per step
+- independent services run concurrently; same-service steps run sequentially in the same branch
 - moves task files across lanes (`backlog → in_progress → review/done/blocked`)
 
 #### `vexdo review`
@@ -97,7 +104,7 @@ Runs review + arbiter flow against current step without restarting full task.
 Runs Codex with your corrective feedback, then re-enters review loop.
 
 #### `vexdo submit`
-Creates PRs for each service branch in the active task and marks task as done.
+Creates one PR per service branch in the active task and marks task as done.
 
 #### `vexdo status`
 Prints a concise summary of active task id/title/step statuses.
@@ -115,29 +122,36 @@ Flags:
 ```yaml
 id: billing-vat-001
 title: "Add VAT ID support"
-depends_on: [] # optional task-level dependencies
 
 steps:
   - service: api
     spec: |
-      Add vat_id to organization model, migration, and create/update APIs.
-      Ensure validation rules and API docs are updated.
+      Add vat_id to organization model and migration.
+      Ensure validation rules are updated.
+
+  - service: api          # same service = continues in the same branch
+    depends_on: [web]     # optional: wait for another service first
+    spec: |
+      Expose vat_id in the public API response and update API docs.
 
   - service: web
-    depends_on: [api] # optional per-step ordering dependency
+    depends_on: [api]     # waits for ALL api steps to complete
     spec: |
       Add VAT ID input to organization settings screen.
       Integrate with updated API and show validation errors.
 ```
 
+**Same-service steps** share one branch and run sequentially in definition order — no `depends_on` needed between them. One PR is created per service at the end.
+
+**Cross-service `depends_on`** references a service name and waits for all steps of that service to complete before starting.
+
 Field reference:
 - `id` *(string, required)*: stable slug used for branches and state.
 - `title` *(string, required)*: human-readable name.
-- `depends_on` *(string[], optional)*: coarse dependency marker at task level.
 - `steps` *(array, required)*: ordered units of work.
-  - `service` *(string, required)*: must match `.vexdo.yml` service name.
+  - `service` *(string, required)*: must match a `.vexdo.yml` service name.
   - `spec` *(string, required)*: concrete implementation request for Codex.
-  - `depends_on` *(string[], optional)*: service dependencies before this step starts.
+  - `depends_on` *(string[], optional)*: service names that must fully complete before this step starts.
 
 ## 7) `.vexdo.yml` format
 
@@ -146,6 +160,7 @@ version: 1
 services:
   - name: api
     path: ./api
+    env_id: codex-env-abc123   # optional: Codex Cloud environment ID
   - name: web
     path: ./web
 
@@ -156,15 +171,23 @@ review:
 
 codex:
   model: gpt-4o
+  base_branch: main
+
+maxConcurrent: 2   # optional: limit parallel service executions
 ```
 
 Field reference:
 - `version`: config schema version (currently `1`).
 - `services`: list of service roots used by task steps.
-- `review.model`: Claude model for reviewer + arbiter.
+  - `name`: service identifier, referenced in task `steps`.
+  - `path`: path to the service directory relative to project root.
+  - `env_id` *(optional)*: Codex Cloud environment ID for this service.
+- `review.model`: Claude model for the arbiter.
 - `review.max_iterations`: hard cap for fix/review loop.
 - `review.auto_submit`: auto-run `submit` after successful review.
-- `codex.model`: model passed to Codex execution.
+- `codex.model`: model passed to Codex Cloud.
+- `codex.base_branch`: base branch for new task branches (default: `main`).
+- `maxConcurrent` *(optional)*: max number of service groups running in parallel.
 
 ## 8) Spec format guide
 
@@ -184,6 +207,8 @@ Acceptance criteria:
 Non-goals:
 ```
 
+Use the `/vexdo-spec` Claude Code skill to generate specs interactively.
+
 ## 9) Troubleshooting
 
 - **"Not inside a vexdo project"**
@@ -199,26 +224,7 @@ Non-goals:
 
 ## 10) Roadmap
 
-Vexdo currently runs tasks sequentially using a local Codex subprocess. The roadmap
-evolves the orchestrator toward cloud-native execution, smarter context management,
-and better observability.
-
-### Cloud execution and parallelism
-
-- **Codex Cloud execution** — replace local `codex exec` with `codex cloud exec`. Each
-  step runs in an isolated cloud sandbox with direct GitHub repository access. The
-  orchestrator submits tasks, polls for completion, retrieves diffs, and uses
-  `codex cloud exec resume` for fix iterations. Eliminates local git state dependencies.
-
-- **Parallel step execution** — once isolation is handled by Codex Cloud, steps without
-  `depends_on` relationships dispatch concurrently. A dependency-aware worker pool means
-  a three-service task completes in the time of its longest step, not the sum of all.
-
 ### Review and verification
-
-- **GitHub Copilot CLI as reviewer** — replace the Claude-based reviewer with
-  `copilot --output-format=json`. Copilot reads the local diff with full repository
-  context (imports, types, related files). Claude stays as the Arbiter.
 
 - **Verification ladder** — structured must-haves in task YAML (`must_haves: [...]`).
   Arbiter verifies each requirement against the diff at four tiers: static (file/export
@@ -267,12 +273,6 @@ and better observability.
 - **Discuss command** — `vexdo discuss <task-id>` opens an interactive Claude session
   with full task context pre-loaded. Ask questions about what was built, queue spec
   updates for pending steps, steer execution from a second terminal while `start` runs.
-
-### Task board TUI
-
-A `vexdo board` command built with **Ink** (React for CLIs) that renders all task lanes
-as a navigable terminal board. Keyboard shortcuts to start, edit, inspect, and abort
-tasks without leaving the terminal.
 
 ## 11) Contributing
 

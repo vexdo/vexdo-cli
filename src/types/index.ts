@@ -77,6 +77,7 @@ export interface StepState {
   service: string;
   status: StepStatus;
   iteration: number;
+  currentStepIndex: number;
   branch?: string;
   lastReview?: string;
   lastArbiterResult?: ArbiterResult;

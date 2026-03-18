@@ -241,9 +241,17 @@ export async function getDiff(sessionId: string, options?: {cwd?: string}): Prom
 
 export async function applyDiff(sessionId: string, options?: {cwd?: string}): Promise<void> {
   const result = await runCodexCommand(['cloud', 'apply', sessionId], {cwd: options?.cwd});
-  if (result.exitCode !== 0) {
-    throw new CodexError('apply_failed', `Failed to apply diff for codex cloud session ${sessionId}.`, result);
+  if (result.exitCode === 0) return;
+
+  // Partial apply: some files applied with no conflicts — treat as success
+  const partialMatch = /applied=(\d+)[^)]*conflicts=(\d+)/i.exec(result.stdout);
+  if (partialMatch) {
+    const applied = parseInt(partialMatch[1], 10);
+    const conflicts = parseInt(partialMatch[2], 10);
+    if (applied > 0 && conflicts === 0) return;
   }
+
+  throw new CodexError('apply_failed', `Failed to apply diff for codex cloud session ${sessionId}.`, result);
 }
 
 export async function exec(opts: {spec: string; cwd: string; model?: string; verbose?: boolean}): Promise<void> {

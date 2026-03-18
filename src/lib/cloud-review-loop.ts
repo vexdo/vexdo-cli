@@ -107,7 +107,8 @@ export async function runCloudReviewLoop(opts: {
     await codex.applyDiff(sessionId, {cwd: opts.serviceRoot});
     const commitMessage = await generateCommitMessage(opts.spec, diff, {cwd: opts.serviceRoot});
     opts.log.info(`Commit: ${commitMessage}`);
-    await git.commitFiles(changedFiles, commitMessage, opts.serviceRoot);
+    await git.stageAll(opts.serviceRoot);
+    await git.commit(commitMessage, opts.serviceRoot);
     await git.push(opts.branch, opts.serviceRoot);
 
     if (arbiter.decision === 'submit') {

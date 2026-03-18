@@ -7,6 +7,7 @@ import type { Command } from 'commander';
 import { stringify } from 'yaml';
 
 import * as logger from '../lib/logger.js';
+import { VEXDO_SPEC_SKILL } from '../lib/skill-templates.js';
 import type { VexdoConfig } from '../types/index.js';
 
 const DEFAULT_REVIEW_MODEL = 'claude-haiku-4-5-20251001';
@@ -125,12 +126,17 @@ export async function runInit(projectRoot: string, prompt: PromptFn = defaultPro
   const gitignorePath = path.join(projectRoot, '.gitignore');
   const gitignoreUpdated = ensureGitignoreEntry(gitignorePath, '.vexdo/');
 
+  const skillPath = path.join(projectRoot, '.claude', 'commands', 'vexdo-spec.md');
+  fs.mkdirSync(path.dirname(skillPath), { recursive: true });
+  fs.writeFileSync(skillPath, VEXDO_SPEC_SKILL, 'utf8');
+
   logger.success('Initialized vexdo project.');
   logger.info(`Created: ${path.relative(projectRoot, configPath)}`);
   logger.info(`Created directories: ${createdDirs.join(', ')}`);
   if (gitignoreUpdated) {
     logger.info('Updated .gitignore with .vexdo/');
   }
+  logger.info(`Created Claude Code skill: ${path.relative(projectRoot, skillPath)}`);
   logger.info("Next: create a task file in tasks/backlog/ and run 'vexdo start tasks/backlog/my-task.yml'");
 }
 
