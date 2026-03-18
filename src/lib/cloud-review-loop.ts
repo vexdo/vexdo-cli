@@ -146,6 +146,7 @@ export async function runCloudReviewLoop(opts: {
       };
     }
 
+    const previousAttempts = history.map((h) => ({feedback: h.feedbackSentToCodex}));
     history.push({review: reviewText, feedbackSentToCodex: arbiter.feedback_for_codex});
     opts.log.warn(`Review requested fixes (iteration ${String(iteration + 1)}/${String(opts.config.review.max_iterations)})`);
     sessionId = await codex.resumeTask(opts.spec, arbiter.feedback_for_codex, {
@@ -154,6 +155,8 @@ export async function runCloudReviewLoop(opts: {
       branch: opts.branch,
       taskTitle: opts.taskTitle,
       iteration: iteration + 1,
+      previousDiff: diff,
+      previousAttempts: previousAttempts.length > 0 ? previousAttempts : undefined,
     });
     opts.stepState.session_id = sessionId;
     iteration += 1;

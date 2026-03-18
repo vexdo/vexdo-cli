@@ -64,7 +64,11 @@ function validateDependencies(steps: TaskStep[]): void {
       if (dep === step.service) {
         throw new Error(`step for '${step.service}' cannot depend on itself`);
       }
-      serviceDeps.get(step.service)!.add(dep);
+      const deps = serviceDeps.get(step.service);
+      if (!deps) {
+        throw new Error(`Unexpected missing deps set for service ${step.service}`);
+      }
+      deps.add(dep);
     }
   }
 

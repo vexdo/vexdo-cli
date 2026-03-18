@@ -90,7 +90,7 @@ describe('runStepsConcurrently', () => {
       { service: 'api', spec: 'step3' },
     ];
 
-    const order: Array<{ service: string; index: number }> = [];
+    const order: { service: string; index: number }[] = [];
 
     const results = await runStepsConcurrently(steps, {}, (step, idx) => {
       order.push({ service: step.service, index: idx });

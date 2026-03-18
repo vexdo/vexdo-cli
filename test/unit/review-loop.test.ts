@@ -55,7 +55,7 @@ describe('runReviewLoop', () => {
     iterationMock.mockReset();
     runCopilotReviewMock.mockReset();
 
-    stepState = { service: 'svc', status: 'in_progress', iteration: 0 };
+    stepState = { service: 'svc', status: 'in_progress', iteration: 0, currentStepIndex: 0 };
   });
 
   it('Empty diff returns submit immediately without calling Claude', async () => {

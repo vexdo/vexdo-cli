@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 
 import { registerAbortCommand } from './commands/abort.js';
+import { registerApproveCommand } from './commands/approve.js';
 import { registerBoardCommand } from './commands/board.js';
 import { registerFixCommand } from './commands/fix.js';
 import { registerInitCommand } from './commands/init.js';
@@ -34,6 +35,7 @@ program.hook('preAction', (_thisCommand, actionCommand) => {
 
 registerInitCommand(program);
 registerStartCommand(program);
+registerApproveCommand(program);
 registerReviewCommand(program);
 registerFixCommand(program);
 registerSubmitCommand(program);

@@ -39,7 +39,7 @@ describe('state', () => {
   it('save/load roundtrip works', () => {
     const root = makeTempDir();
     const created = createState('task-1', 'Task 1', '/tmp/task.yml', [
-      { service: 'api', status: 'pending', iteration: 0 },
+      { service: 'api', status: 'pending', iteration: 0, currentStepIndex: 0 },
     ]);
 
     saveState(root, created);
@@ -93,7 +93,7 @@ describe('state', () => {
 
   it('createState sets expected fields', () => {
     const state = createState('task-1', 'Task 1', '/tmp/task.yml', [
-      { service: 'api', status: 'pending', iteration: 0 },
+      { service: 'api', status: 'pending', iteration: 0, currentStepIndex: 0 },
     ]);
 
     expect(state.taskId).toBe('task-1');
@@ -107,8 +107,8 @@ describe('state', () => {
   it('updateStep re-reads and persists merged state', async () => {
     const root = makeTempDir();
     const original = createState('task-1', 'Task 1', '/tmp/task.yml', [
-      { service: 'api', status: 'pending', iteration: 0 },
-      { service: 'web', status: 'pending', iteration: 0 },
+      { service: 'api', status: 'pending', iteration: 0, currentStepIndex: 0 },
+      { service: 'web', status: 'pending', iteration: 0, currentStepIndex: 1 },
     ]);
 
     saveState(root, original);

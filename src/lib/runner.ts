@@ -26,7 +26,10 @@ function groupStepsByService(steps: TaskStep[]): ServiceGroup[] {
       groupMap.set(step.service, { service: step.service, steps: [], dependsOn: new Set() });
       order.push(step.service);
     }
-    const group = groupMap.get(step.service)!;
+    const group = groupMap.get(step.service);
+    if (!group) {
+      throw new Error(`Unexpected missing group for service ${step.service}`);
+    }
     group.steps.push(step);
     for (const dep of step.depends_on ?? []) {
       if (dep !== step.service) {
@@ -35,7 +38,13 @@ function groupStepsByService(steps: TaskStep[]): ServiceGroup[] {
     }
   }
 
-  return order.map((s) => groupMap.get(s)!);
+  return order.map((s) => {
+    const group = groupMap.get(s);
+    if (!group) {
+      throw new Error(`Unexpected missing group for service ${s}`);
+    }
+    return group;
+  });
 }
 
 export async function runStepsConcurrently(
@@ -93,8 +102,7 @@ export async function runStepsConcurrently(
 
       const runningPromise = (async () => {
         let lastResult: StepResult = { service: group.service, status: 'failed', error: 'no_steps' };
-        for (let i = 0; i < group.steps.length; i++) {
-          const step = group.steps[i]!;
+        for (const [i, step] of group.steps.entries()) {
           const result = await runStep(step, i);
           lastResult = result;
           if (result.status !== 'done') {
@@ -122,5 +130,11 @@ export async function runStepsConcurrently(
     }
   }
 
-  return groups.map((group) => results.get(group.service)!);
+  return groups.map((group) => {
+    const result = results.get(group.service);
+    if (!result) {
+      throw new Error(`Unexpected missing result for service ${group.service}`);
+    }
+    return result;
+  });
 }

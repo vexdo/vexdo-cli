@@ -83,7 +83,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
         }
 
         // Skip steps already processed in a previous run
-        if (stepIndexWithinService < (stepState.currentStepIndex ?? 0)) {
+        if (stepIndexWithinService < stepState.currentStepIndex) {
           return { service: step.service, status: 'done', sessionId: stepState.session_id };
         }
 
@@ -124,8 +124,8 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
           const canResumeSession = options.resume && stepIndexWithinService === 0 && stepState.session_id !== undefined;
           // For the first step use the base branch; subsequent steps build on the existing working branch
           const codexBranch = stepIndexWithinService === 0 ? config.codex.base_branch : branch;
-          const submissionSession = canResumeSession
-            ? stepState.session_id!
+          const submissionSession = canResumeSession && stepState.session_id
+            ? stepState.session_id
             : await codex.submitTask(step.spec, { cwd: serviceRoot, envId, branch: codexBranch });
           await updateStep(projectRoot, task.id, step.service, { session_id: submissionSession });
 

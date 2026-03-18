@@ -186,7 +186,15 @@ export async function submitTask(prompt: string, options?: {cwd?: string; envId?
 export async function resumeTask(
   spec: string,
   feedback: string,
-  options?: {cwd?: string; envId?: string; branch?: string; taskTitle?: string; iteration?: number},
+  options?: {
+    cwd?: string;
+    envId?: string;
+    branch?: string;
+    taskTitle?: string;
+    iteration?: number;
+    previousDiff?: string;
+    previousAttempts?: {feedback: string}[];
+  },
 ): Promise<string> {
   const header = [
     `[REVIEW FEEDBACK — FIX REQUESTED]`,
@@ -196,8 +204,22 @@ export async function resumeTask(
     .filter(Boolean)
     .join('\n');
 
-  const prompt = `${header}\n\n${spec}\n\nIssues to fix:\n${feedback}`;
-  return submitTask(prompt, options);
+  const parts: string[] = [header, `ORIGINAL SPEC:\n${spec}`];
+
+  if (options?.previousDiff) {
+    parts.push(`YOUR PREVIOUS OUTPUT (the diff you produced last time):\n${options.previousDiff}`);
+  }
+
+  if (options?.previousAttempts && options.previousAttempts.length > 0) {
+    const attemptsText = options.previousAttempts
+      .map((a, i) => `Attempt ${String(i + 1)}: ${a.feedback}`)
+      .join('\n\n');
+    parts.push(`HISTORY OF PREVIOUS FAILED ATTEMPTS — do not repeat these mistakes:\n${attemptsText}`);
+  }
+
+  parts.push(`ISSUES TO FIX IN THIS ITERATION:\n${feedback}`);
+
+  return submitTask(parts.join('\n\n'), options);
 }
 
 export async function pollStatus(sessionId: string, opts: {intervalMs: number; timeoutMs: number}): Promise<CodexTaskStatus> {
@@ -241,7 +263,9 @@ export async function getDiff(sessionId: string, options?: {cwd?: string}): Prom
 
 export async function applyDiff(sessionId: string, options?: {cwd?: string}): Promise<void> {
   const result = await runCodexCommand(['cloud', 'apply', sessionId], {cwd: options?.cwd});
-  if (result.exitCode === 0) return;
+  if (result.exitCode === 0) {
+    return;
+  }
 
   // Partial apply: some files applied — check conflicts
   const partialMatch = /applied=(\d+)[^)]*conflicts=(\d+)/i.exec(result.stdout);
@@ -253,7 +277,9 @@ export async function applyDiff(sessionId: string, options?: {cwd?: string}): Pr
 
   // Reset any partially-applied changes so the branch stays clean for retry
   await new Promise<void>((resolve) => {
-    execFile('git', ['reset', '--hard', 'HEAD'], {cwd: options?.cwd}, () => resolve());
+    execFile('git', ['reset', '--hard', 'HEAD'], {cwd: options?.cwd}, () => {
+      resolve();
+    });
   });
 
   throw new CodexError('apply_failed', `Failed to apply diff for codex cloud session ${sessionId}.`, result);
