@@ -1,9 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import { ARBITER_SYSTEM_PROMPT } from '../prompts/arbiter.js';
+import { STUCK_DETECTOR_SYSTEM_PROMPT } from '../prompts/stuck-detector.js';
 import * as logger from './logger.js';
 import { REVIEWER_SYSTEM_PROMPT } from '../prompts/reviewer.js';
-import type { ArbiterResult, ReviewComment, ReviewResult } from '../types/index.js';
+import type { ArbiterResult, ReviewComment, ReviewResult, StuckDetectorResult } from '../types/index.js';
 
 const REVIEWER_MAX_TOKENS_DEFAULT = 4096;
 const ARBITER_MAX_TOKENS_DEFAULT = 2048;
@@ -27,6 +28,19 @@ export interface ArbiterOptions {
 export interface ExpandFeedbackOptions {
   spec: string;
   feedback: string;
+  model: string;
+}
+
+export interface StuckDetectorIteration {
+  index: number;
+  diff: string;
+  reviewText: string;
+  feedbackForCodex: string;
+}
+
+export interface StuckDetectorOptions {
+  spec: string;
+  history: StuckDetectorIteration[];
   model: string;
 }
 
@@ -96,6 +110,35 @@ export class ClaudeClient {
       });
 
       return extractTextFromResponse(response);
+    });
+  }
+
+  async runStuckDetector(opts: StuckDetectorOptions): Promise<StuckDetectorResult> {
+    return this.runWithRetry(async () => {
+      const iterationsText = opts.history
+        .map((it) =>
+          [
+            `--- Iteration ${String(it.index + 1)} ---`,
+            `DIFF:\n${it.diff}`,
+            `REVIEWER COMMENTS:\n${it.reviewText}`,
+            `FEEDBACK SENT TO AGENT:\n${it.feedbackForCodex}`,
+          ].join('\n\n'),
+        )
+        .join('\n\n');
+
+      const response = await this.client.messages.create({
+        model: opts.model,
+        max_tokens: 1024,
+        system: STUCK_DETECTOR_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: `SPEC:\n${opts.spec}\n\nITERATION HISTORY:\n${iterationsText}`,
+          },
+        ],
+      });
+
+      return parseStuckDetectorResult(extractTextFromResponse(response));
     });
   }
 
@@ -196,6 +239,21 @@ function parseReviewerResult(raw: string): ReviewResult {
   return parsed;
 }
 
+function parseStuckDetectorResult(raw: string): StuckDetectorResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJson(raw));
+  } catch (error: unknown) {
+    throw new Error(`Failed to parse stuck-detector JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (!isStuckDetectorResult(parsed)) {
+    throw new Error('Stuck-detector JSON does not match schema');
+  }
+
+  return parsed;
+}
+
 function parseArbiterResult(raw: string): ArbiterResult {
   let parsed: unknown;
   try {
@@ -276,6 +334,18 @@ function getStatusCode(error: unknown): number | undefined {
   }
 
   return undefined;
+}
+
+function isStuckDetectorResult(value: unknown): value is StuckDetectorResult {
+  if (typeof value !== 'object' || value === null) return false;
+  const c = value as Record<string, unknown>;
+  const validTypes = ['oscillation', 'spec_contradiction', 'codex_not_following', 'converging'];
+  return (
+    typeof c.stuck === 'boolean' &&
+    typeof c.type === 'string' && validTypes.includes(c.type) &&
+    typeof c.diagnosis === 'string' &&
+    typeof c.recommendation === 'string'
+  );
 }
 
 function isRetryableError(error: unknown): boolean {

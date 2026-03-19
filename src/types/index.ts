@@ -73,6 +73,15 @@ export interface ArbiterResult {
   summary: string;
 }
 
+export type StuckType = 'spec_contradiction' | 'codex_not_following' | 'oscillation' | 'converging';
+
+export interface StuckDetectorResult {
+  stuck: boolean;
+  type: StuckType;
+  diagnosis: string;
+  recommendation: string;
+}
+
 export interface StepState {
   service: string;
   status: StepStatus;

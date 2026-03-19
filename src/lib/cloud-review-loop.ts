@@ -147,7 +147,39 @@ export async function runCloudReviewLoop(opts: {
     }
 
     const previousAttempts = history.map((h) => ({feedback: h.feedbackSentToCodex}));
-    history.push({review: reviewText, feedbackSentToCodex: arbiter.feedback_for_codex});
+    history.push({diff, review: reviewText, feedbackSentToCodex: arbiter.feedback_for_codex});
+
+    // Stuck detection: run after the second fix attempt (when we have 2+ data points)
+    if (history.length >= 2) {
+      opts.log.info('Running stuck-loop detector...');
+      const stuckResult = await opts.claude.runStuckDetector({
+        spec: opts.spec,
+        history: history.map((h, i) => ({
+          index: i,
+          diff: h.diff,
+          reviewText: h.review,
+          feedbackForCodex: h.feedbackSentToCodex,
+        })),
+        model: opts.config.review.model,
+      });
+
+      opts.log.debug(`Stuck detector: ${stuckResult.type} — ${stuckResult.diagnosis}`);
+
+      if (stuckResult.stuck) {
+        opts.log.warn(`Stuck loop detected (${stuckResult.type}): ${stuckResult.diagnosis}`);
+        return {
+          sessionId,
+          finalIteration: iteration,
+          lastReview: reviewText,
+          lastArbiterResult: {
+            decision: 'escalate',
+            reasoning: `Stuck loop detected after ${String(history.length)} iterations (${stuckResult.type}): ${stuckResult.diagnosis}`,
+            summary: stuckResult.recommendation,
+          },
+        };
+      }
+    }
+
     opts.log.warn(`Review requested fixes (iteration ${String(iteration + 1)}/${String(opts.config.review.max_iterations)})`);
     sessionId = await codex.resumeTask(opts.spec, arbiter.feedback_for_codex, {
       cwd: opts.serviceRoot,

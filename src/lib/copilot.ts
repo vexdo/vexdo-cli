@@ -123,6 +123,7 @@ export async function generateCommitMessage(spec: string, diff: string, opts?: {
 }
 
 export interface ReviewIteration {
+  diff: string;
   review: string;
   feedbackSentToCodex: string;
 }

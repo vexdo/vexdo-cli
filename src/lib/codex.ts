@@ -183,6 +183,18 @@ export async function submitTask(prompt: string, options?: {cwd?: string; envId?
   return sessionId;
 }
 
+// Codex Cloud rejects prompts over 100 000 characters.
+// Reserve budget: header + spec + feedback are mandatory; diff and history fill the rest.
+const CODEX_PROMPT_CHAR_LIMIT = 95_000;
+const DIFF_CHAR_BUDGET = 30_000;
+const HISTORY_CHAR_BUDGET = 10_000;
+
+function truncate(text: string, limit: number, label: string): string {
+  if (text.length <= limit) return text;
+  const kept = text.slice(0, limit);
+  return `${kept}\n\n[${label} truncated — ${String(text.length - limit)} characters omitted]`;
+}
+
 export async function resumeTask(
   spec: string,
   feedback: string,
@@ -207,19 +219,29 @@ export async function resumeTask(
   const parts: string[] = [header, `ORIGINAL SPEC:\n${spec}`];
 
   if (options?.previousDiff) {
-    parts.push(`YOUR PREVIOUS OUTPUT (the diff you produced last time):\n${options.previousDiff}`);
+    const truncatedDiff = truncate(options.previousDiff, DIFF_CHAR_BUDGET, 'diff');
+    parts.push(`YOUR PREVIOUS OUTPUT (the diff you produced last time):\n${truncatedDiff}`);
   }
 
   if (options?.previousAttempts && options.previousAttempts.length > 0) {
     const attemptsText = options.previousAttempts
       .map((a, i) => `Attempt ${String(i + 1)}: ${a.feedback}`)
       .join('\n\n');
-    parts.push(`HISTORY OF PREVIOUS FAILED ATTEMPTS — do not repeat these mistakes:\n${attemptsText}`);
+    const truncatedHistory = truncate(attemptsText, HISTORY_CHAR_BUDGET, 'history');
+    parts.push(`HISTORY OF PREVIOUS FAILED ATTEMPTS — do not repeat these mistakes:\n${truncatedHistory}`);
   }
 
   parts.push(`ISSUES TO FIX IN THIS ITERATION:\n${feedback}`);
 
-  return submitTask(parts.join('\n\n'), options);
+  const prompt = parts.join('\n\n');
+
+  // Final safety check: if still over limit, drop previousDiff entirely
+  if (prompt.length > CODEX_PROMPT_CHAR_LIMIT && options?.previousDiff) {
+    const partsWithoutDiff = parts.filter((p) => !p.startsWith('YOUR PREVIOUS OUTPUT'));
+    return submitTask(partsWithoutDiff.join('\n\n'), options);
+  }
+
+  return submitTask(prompt, options);
 }
 
 export async function pollStatus(sessionId: string, opts: {intervalMs: number; timeoutMs: number}): Promise<CodexTaskStatus> {
