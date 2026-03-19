@@ -107,9 +107,49 @@ export async function runCloudReviewLoop(opts: {
     await codex.applyDiff(sessionId, {cwd: opts.serviceRoot});
     const commitMessage = await generateCommitMessage(opts.spec, diff, {cwd: opts.serviceRoot});
     opts.log.info(`Commit: ${commitMessage}`);
-    await git.stageAll(opts.serviceRoot);
-    await git.commit(commitMessage, opts.serviceRoot);
-    await git.push(opts.branch, opts.serviceRoot);
+    try {
+      await git.stageAll(opts.serviceRoot);
+      await git.commit(commitMessage, opts.serviceRoot);
+      await git.push(opts.branch, opts.serviceRoot);
+    } catch (commitErr) {
+      if (!(commitErr instanceof git.GitError)) throw commitErr;
+
+      // lint-staged reverts staged files but applied files may still be on disk — clean up
+      try { await git.exec(['reset', '--hard', 'HEAD'], opts.serviceRoot); } catch { /* ignore */ }
+
+      opts.log.warn(`Pre-commit hook failed, sending errors to Codex for fix...`);
+
+      if (iteration + 1 >= opts.config.review.max_iterations) {
+        return {
+          sessionId,
+          finalIteration: iteration,
+          lastReview: reviewText,
+          lastArbiterResult: {
+            decision: 'escalate',
+            reasoning: `Pre-commit hook failed and max iterations reached:\n${commitErr.stderr}`,
+            summary: 'Escalated because pre-commit hook kept failing.',
+          },
+        };
+      }
+
+      const hookFeedback =
+        `The code was rejected by the pre-commit hook. Fix all errors before committing:\n\n${commitErr.stderr}`;
+      const previousAttempts = history.map((h) => ({feedback: h.feedbackSentToCodex}));
+      history.push({diff, review: reviewText, feedbackSentToCodex: hookFeedback});
+      sessionId = await codex.resumeTask(opts.spec, hookFeedback, {
+        cwd: opts.serviceRoot,
+        envId: opts.envId,
+        branch: opts.branch,
+        taskTitle: opts.taskTitle,
+        iteration: iteration + 1,
+        previousDiff: diff,
+        previousAttempts: previousAttempts.length > 0 ? previousAttempts : undefined,
+      });
+      opts.stepState.session_id = sessionId;
+      iteration += 1;
+      opts.stepState.iteration = iteration;
+      continue;
+    }
 
     if (arbiter.decision === 'submit') {
       return {
@@ -150,7 +190,7 @@ export async function runCloudReviewLoop(opts: {
     history.push({diff, review: reviewText, feedbackSentToCodex: arbiter.feedback_for_codex});
 
     // Stuck detection: run after the second fix attempt (when we have 2+ data points)
-    if (history.length >= 2) {
+    if (history.length >= 3) {
       opts.log.info('Running stuck-loop detector...');
       const stuckResult = await opts.claude.runStuckDetector({
         spec: opts.spec,

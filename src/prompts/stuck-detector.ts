@@ -14,8 +14,9 @@ Stuck patterns to detect:
 - converging: the agent is making real progress — each iteration addresses some previous issues even if new ones surface. This is NOT stuck.
 
 Rules:
-- Be conservative: only mark stuck=true when the pattern is clear and repeated across at least 2 iterations.
+- Be conservative: only mark stuck=true when the pattern is clear and repeated across at least 3 iterations.
 - If the most recent iteration actually fixed the previously flagged issues (even if new ones appeared), lean toward converging.
+- When in doubt, return converging. A false negative (missing a stuck loop) is better than a false positive (stopping a loop that was making progress).
 - For spec_contradiction: identify the exact two requirements that conflict and quote them from the spec.
 - For oscillation: identify the specific files and the direction of changes that keep reversing.
 - For codex_not_following: quote the repeated instruction and show which iterations it appeared in.
