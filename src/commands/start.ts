@@ -176,7 +176,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
             }
 
             scopedLogger.warn(
-              `Step escalated (auto-approving): ${execution.lastArbiterResult.summary ?? execution.lastArbiterResult.reasoning}`,
+              `Step escalated (auto-approving): ${execution.lastArbiterResult.summary || execution.lastArbiterResult.reasoning}`,
             );
             if (await git.hasUncommittedChanges(serviceRoot)) {
               scopedLogger.info(`Committing and pushing to ${branch}...`);
