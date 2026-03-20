@@ -41,6 +41,7 @@ export async function runCloudReviewLoop(opts: {
   config: ReturnType<typeof loadConfig>;
   claude: ClaudeClient;
   verbose?: boolean;
+  autoApprove?: boolean;
   log: Logger;
   serviceRoot: string;
   envId?: string;
@@ -48,6 +49,16 @@ export async function runCloudReviewLoop(opts: {
   let sessionId = opts.sessionId;
   let iteration = opts.stepState.iteration;
   const history: ReviewIteration[] = [];
+
+  function buildStuckDetectorHistory() {
+    return history.map((h, i) => ({
+      index: i,
+      // Only include changed file paths from diff — full diffs are too large for rate limits
+      diff: h.diff.split('\n').filter((l) => l.startsWith('diff --git')).join('\n') || h.diff.slice(0, 500),
+      reviewText: h.review.slice(0, 1500),
+      feedbackForCodex: h.feedbackSentToCodex.slice(0, 1000),
+    }));
+  }
 
   for (;;) {
     opts.log.iteration(iteration + 1, opts.config.review.max_iterations);
@@ -114,6 +125,34 @@ export async function runCloudReviewLoop(opts: {
     opts.stepState.session_id = sessionId;
 
     if (arbiter.decision === 'escalate') {
+      if (opts.autoApprove && iteration + 1 < opts.config.review.max_iterations) {
+        opts.log.warn(`Step escalated — running auto-decision maker...`);
+        const decision = await opts.claude.runDecisionMaker({
+          spec: opts.spec,
+          escalationReasoning: arbiter.reasoning,
+          escalationSummary: arbiter.summary,
+          model: opts.config.review.model,
+        });
+        opts.log.warn(`Auto-selected: ${decision.selected_option}`);
+        opts.log.warn(`Reason: ${decision.reasoning}`);
+
+        const previousAttempts = history.map((h) => ({feedback: h.feedbackSentToCodex}));
+        history.push({diff, review: reviewText, feedbackSentToCodex: decision.directive});
+        sessionId = await codex.resumeTask(opts.spec, decision.directive, {
+          cwd: opts.serviceRoot,
+          envId: opts.envId,
+          branch: opts.branch,
+          taskTitle: opts.taskTitle,
+          iteration: iteration + 1,
+          previousDiff: diff,
+          previousAttempts: previousAttempts.length > 0 ? previousAttempts : undefined,
+        });
+        opts.stepState.session_id = sessionId;
+        iteration += 1;
+        opts.stepState.iteration = iteration;
+        continue;
+      }
+
       return {
         sessionId,
         finalIteration: iteration,
@@ -160,7 +199,7 @@ export async function runCloudReviewLoop(opts: {
       if (history.length >= 3) {
         const stuckResult = await opts.claude.runStuckDetector({
           spec: opts.spec,
-          history: history.map((h, i) => ({index: i, diff: h.diff, reviewText: h.review, feedbackForCodex: h.feedbackSentToCodex})),
+          history: buildStuckDetectorHistory(),
           model: opts.config.review.model,
         });
         if (stuckResult.stuck) {
@@ -236,12 +275,7 @@ export async function runCloudReviewLoop(opts: {
       opts.log.info('Running stuck-loop detector...');
       const stuckResult = await opts.claude.runStuckDetector({
         spec: opts.spec,
-        history: history.map((h, i) => ({
-          index: i,
-          diff: h.diff,
-          reviewText: h.review,
-          feedbackForCodex: h.feedbackSentToCodex,
-        })),
+        history: buildStuckDetectorHistory(),
         model: opts.config.review.model,
       });
 

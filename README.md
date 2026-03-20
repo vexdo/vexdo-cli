@@ -226,6 +226,11 @@ Use the `/vexdo-spec` Claude Code skill to generate specs interactively.
 
 ### Review and verification
 
+- **"Verify Before Execute" Workflows** — implementing steps where one agent (or a
+  traditional script) generates tests before the main agent generates the solution to
+  ensure compliance. The test-generation step runs first and commits tests to the branch;
+  Codex then implements the solution with those tests as a hard acceptance gate.
+
 - **Verification ladder** — structured must-haves in task YAML (`must_haves: [...]`).
   Arbiter verifies each requirement against the diff at four tiers: static (file/export
   presence), command (tests pass), behavioral (observable output), or human (escalate).

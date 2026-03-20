@@ -75,6 +75,12 @@ export interface ArbiterResult {
 
 export type StuckType = 'spec_contradiction' | 'codex_not_following' | 'oscillation' | 'converging';
 
+export interface DecisionMakerResult {
+  selected_option: string;
+  reasoning: string;
+  directive: string;
+}
+
 export interface StuckDetectorResult {
   stuck: boolean;
   type: StuckType;

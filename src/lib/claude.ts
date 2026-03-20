@@ -1,10 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import { ARBITER_SYSTEM_PROMPT } from '../prompts/arbiter.js';
+import { DECISION_MAKER_SYSTEM_PROMPT } from '../prompts/decision-maker.js';
 import { STUCK_DETECTOR_SYSTEM_PROMPT } from '../prompts/stuck-detector.js';
 import * as logger from './logger.js';
 import { REVIEWER_SYSTEM_PROMPT } from '../prompts/reviewer.js';
-import type { ArbiterResult, ReviewComment, ReviewResult, StuckDetectorResult } from '../types/index.js';
+import type { ArbiterResult, DecisionMakerResult, ReviewComment, ReviewResult, StuckDetectorResult } from '../types/index.js';
 
 const REVIEWER_MAX_TOKENS_DEFAULT = 4096;
 const ARBITER_MAX_TOKENS_DEFAULT = 2048;
@@ -41,6 +42,13 @@ export interface StuckDetectorIteration {
 export interface StuckDetectorOptions {
   spec: string;
   history: StuckDetectorIteration[];
+  model: string;
+}
+
+export interface DecisionMakerOptions {
+  spec: string;
+  escalationReasoning: string;
+  escalationSummary: string;
   model: string;
 }
 
@@ -139,6 +147,27 @@ export class ClaudeClient {
       });
 
       return parseStuckDetectorResult(extractTextFromResponse(response));
+    });
+  }
+
+  async runDecisionMaker(opts: DecisionMakerOptions): Promise<DecisionMakerResult> {
+    return this.runWithRetry(async () => {
+      const response = await this.client.messages.create({
+        model: opts.model,
+        max_tokens: 1024,
+        system: DECISION_MAKER_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content:
+              `SPEC:\n${opts.spec}\n\n` +
+              `ESCALATION REASONING:\n${opts.escalationReasoning}\n\n` +
+              `ESCALATION SUMMARY:\n${opts.escalationSummary}`,
+          },
+        ],
+      });
+
+      return parseDecisionMakerResult(extractTextFromResponse(response));
     });
   }
 
@@ -345,6 +374,31 @@ function isStuckDetectorResult(value: unknown): value is StuckDetectorResult {
     typeof c.type === 'string' && validTypes.includes(c.type) &&
     typeof c.diagnosis === 'string' &&
     typeof c.recommendation === 'string'
+  );
+}
+
+function parseDecisionMakerResult(raw: string): DecisionMakerResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(extractJson(raw));
+  } catch (error: unknown) {
+    throw new Error(`Failed to parse decision-maker JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (!isDecisionMakerResult(parsed)) {
+    throw new Error('Decision-maker JSON does not match schema');
+  }
+
+  return parsed;
+}
+
+function isDecisionMakerResult(value: unknown): value is DecisionMakerResult {
+  if (typeof value !== 'object' || value === null) return false;
+  const c = value as Record<string, unknown>;
+  return (
+    typeof c.selected_option === 'string' &&
+    typeof c.reasoning === 'string' &&
+    typeof c.directive === 'string'
   );
 }
 

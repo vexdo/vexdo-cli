@@ -145,6 +145,7 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
             config,
             claude,
             verbose: options.verbose,
+            autoApprove: options.autoApprove,
             log: scopedLogger,
             serviceRoot,
             envId,
