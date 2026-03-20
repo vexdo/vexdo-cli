@@ -1,14 +1,33 @@
+import { existsSync } from 'node:fs';
+import { execFile as execFileCb } from 'node:child_process';
+import { promisify } from 'node:util';
+
 import type { ClaudeClient } from './claude.js';
 import type { loadConfig } from './config.js';
 import type { Logger } from './logger.js';
 import * as codex from './codex.js';
-import { generateCommitMessage, runCopilotReview, type ReviewIteration } from './copilot.js';
+import { runCopilotReview, type ReviewIteration } from './copilot.js';
 import * as git from './git.js';
 import { saveIterationLog } from './state.js';
 import type { ArbiterResult } from '../types/index.js';
 
 export const POLL_INTERVAL_MS = 2 * 60_000;
 export const POLL_TIMEOUT_MS = 60 * 60_000;
+
+const execFile = promisify(execFileCb);
+
+function detectPackageManager(cwd: string): 'pnpm' | 'yarn' | 'npm' {
+  if (existsSync(`${cwd}/pnpm-lock.yaml`)) return 'pnpm';
+  if (existsSync(`${cwd}/yarn.lock`)) return 'yarn';
+  return 'npm';
+}
+
+async function installDepsIfNeeded(diff: string, cwd: string, log: Logger): Promise<void> {
+  if (!diff.includes('package.json')) return;
+  const pm = detectPackageManager(cwd);
+  log.info(`package.json changed — running ${pm} install...`);
+  await execFile(pm, ['install'], {cwd, timeout: 120_000});
+}
 
 export async function runCloudReviewLoop(opts: {
   taskId: string;
@@ -105,7 +124,8 @@ export async function runCloudReviewLoop(opts: {
 
     opts.log.info(`Applying diff and pushing to ${opts.branch}...`);
     await codex.applyDiff(sessionId, {cwd: opts.serviceRoot});
-    const commitMessage = await generateCommitMessage(opts.spec, diff, {cwd: opts.serviceRoot});
+    await installDepsIfNeeded(diff, opts.serviceRoot, opts.log);
+    const commitMessage = `feat: ${opts.taskTitle}`;
     opts.log.info(`Commit: ${commitMessage}`);
     try {
       await git.stageAll(opts.serviceRoot);
@@ -136,6 +156,28 @@ export async function runCloudReviewLoop(opts: {
         `The code was rejected by the pre-commit hook. Fix all errors before committing:\n\n${commitErr.stderr}`;
       const previousAttempts = history.map((h) => ({feedback: h.feedbackSentToCodex}));
       history.push({diff, review: reviewText, feedbackSentToCodex: hookFeedback});
+
+      if (history.length >= 3) {
+        const stuckResult = await opts.claude.runStuckDetector({
+          spec: opts.spec,
+          history: history.map((h, i) => ({index: i, diff: h.diff, reviewText: h.review, feedbackForCodex: h.feedbackSentToCodex})),
+          model: opts.config.review.model,
+        });
+        if (stuckResult.stuck) {
+          opts.log.warn(`Stuck loop detected in pre-commit fixes (${stuckResult.type}): ${stuckResult.diagnosis}`);
+          return {
+            sessionId,
+            finalIteration: iteration,
+            lastReview: reviewText,
+            lastArbiterResult: {
+              decision: 'escalate',
+              reasoning: `Stuck loop detected after ${String(history.length)} pre-commit fix iterations (${stuckResult.type}): ${stuckResult.diagnosis}`,
+              summary: stuckResult.recommendation,
+            },
+          };
+        }
+      }
+
       sessionId = await codex.resumeTask(opts.spec, hookFeedback, {
         cwd: opts.serviceRoot,
         envId: opts.envId,

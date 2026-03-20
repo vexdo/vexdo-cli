@@ -20,6 +20,7 @@ export interface StartCommandOptions {
   dryRun?: boolean;
   verbose?: boolean;
   resume?: boolean;
+  autoApprove?: boolean;
 }
 
 function fatalAndExit(message: string, hint?: string): never {
@@ -158,19 +159,31 @@ export async function runStart(taskFile: string, options: StartCommandOptions): 
           });
 
           if (execution.lastArbiterResult.decision === 'escalate') {
-            logger.escalation({
-              taskId: task.id,
-              service: step.service,
-              iteration: execution.finalIteration,
-              spec: step.spec,
-              diff: '',
-              reviewText: execution.lastReview,
-              arbiterReasoning: execution.lastArbiterResult.reasoning,
-              summary: execution.lastArbiterResult.summary,
-            });
+            if (!options.autoApprove) {
+              logger.escalation({
+                taskId: task.id,
+                service: step.service,
+                iteration: execution.finalIteration,
+                spec: step.spec,
+                diff: '',
+                reviewText: execution.lastReview,
+                arbiterReasoning: execution.lastArbiterResult.reasoning,
+                summary: execution.lastArbiterResult.summary,
+              });
 
-            await updateStep(projectRoot, task.id, step.service, { status: 'escalated' });
-            return { service: step.service, status: 'escalated', sessionId: execution.sessionId };
+              await updateStep(projectRoot, task.id, step.service, { status: 'escalated' });
+              return { service: step.service, status: 'escalated', sessionId: execution.sessionId };
+            }
+
+            scopedLogger.warn(
+              `Step escalated (auto-approving): ${execution.lastArbiterResult.summary ?? execution.lastArbiterResult.reasoning}`,
+            );
+            if (await git.hasUncommittedChanges(serviceRoot)) {
+              scopedLogger.info(`Committing and pushing to ${branch}...`);
+              await git.stageAll(serviceRoot);
+              await git.commit(`chore: auto-approve escalated step [${step.service}]`, serviceRoot);
+              await git.push(branch, serviceRoot);
+            }
           }
 
           const stepsForService = task.steps.filter((s) => s.service === step.service).length;
@@ -254,6 +267,7 @@ export function registerStartCommand(program: Command): void {
     .option('--verbose', 'Enable verbose logs')
     .option('--dry-run', 'Print plan without making changes')
     .option('--resume', 'Resume an existing active task')
+    .option('--auto-approve', 'Automatically approve escalated steps and continue')
     .action(async (taskFile: string, options: StartCommandOptions, command: Command) => {
       const merged = command.optsWithGlobals();
       await runStart(taskFile, { ...options, ...merged });
